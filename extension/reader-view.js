@@ -216,15 +216,17 @@ globalThis.PaperSidecarReader = (() => {
     // Narrow the page instead of covering it, and restore the page's own style on close.
     // Ordinary pages reflow when the root gets a right margin. The browser's PDF viewer is a
     // single full-window <embed> that ignores that margin, so it is narrowed directly.
-    const saved = new Map();
+    // The original values are kept on the elements themselves, so whichever script runs
+    // next (e.g. after the extension is reloaded with the panel open) can restore them.
+    const SAVED = "data-paper-sidecar-saved";
     function setStyle(element, property, value) {
-      if (!saved.has(element)) saved.set(element, new Map());
-      const original = saved.get(element);
-      if (!original.has(property))
-        original.set(property, [
+      const original = JSON.parse(element.getAttribute(SAVED) || "{}");
+      if (!(property in original))
+        original[property] = [
           element.style.getPropertyValue(property),
           element.style.getPropertyPriority(property),
-        ]);
+        ];
+      element.setAttribute(SAVED, JSON.stringify(original));
       element.style.setProperty(property, value, "important");
     }
     function pushPage(pixels) {
@@ -234,13 +236,22 @@ globalThis.PaperSidecarReader = (() => {
           setStyle(viewer, "width", `calc(100% - ${pixels}px)`);
         return;
       }
-      for (const [element, properties] of saved)
-        for (const [property, [value, priority]] of properties) {
+      for (const element of document.querySelectorAll(`[${SAVED}]`)) {
+        let original = {};
+        try {
+          original = JSON.parse(element.getAttribute(SAVED));
+        } catch {
+          /* A damaged marker: just drop it. */
+        }
+        for (const [property, [value, priority]] of Object.entries(original)) {
           if (value) element.style.setProperty(property, value, priority);
           else element.style.removeProperty(property);
         }
-      saved.clear();
+        element.removeAttribute(SAVED);
+      }
     }
+    // Undo anything a previous instance of this script left behind.
+    pushPage(0);
 
     function applyWidth() {
       const pixels = clampWidth(width ?? defaultWidth());

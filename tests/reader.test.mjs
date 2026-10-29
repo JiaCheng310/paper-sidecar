@@ -464,3 +464,27 @@ test("in the browser's PDF viewer the PDF itself is narrowed, and restored on cl
     app.dom.window.close();
   }
 });
+
+test("a narrowed page left by a reloaded extension is restored by the next script", async () => {
+  const app = await makeReader();
+  try {
+    const { window } = app;
+    const document = window.document;
+    const viewer = document.createElement("embed");
+    viewer.setAttribute("type", "application/pdf");
+    document.body.append(viewer);
+    app.launcher().click();
+    assert.match(viewer.style.width, /calc/);
+    assert.match(document.documentElement.style.marginRight, /px/);
+    // The extension is reloaded while the panel is open: the old script disappears without
+    // closing anything, and a new one starts.
+    document.getElementById("paper-sidecar-root").remove();
+    window.eval(contentSource);
+    await app.settle();
+    assert.equal(viewer.style.width, "");
+    assert.equal(document.documentElement.style.marginRight, "");
+    assert.equal(document.querySelector("[data-paper-sidecar-saved]"), null);
+  } finally {
+    app.dom.window.close();
+  }
+});
