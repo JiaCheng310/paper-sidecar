@@ -25,11 +25,26 @@ const backgroundSource = (
 function backgroundHandler() {
   const handlers = [];
   const opened = [];
+  const prefetches = [];
+  const options = [];
+  let actionClick = null;
   let stored = {};
   const browser = {
     runtime: {
       id: extensionId,
       getURL: (path) => `${extensionOrigin}/${path}`,
+      connectNative: () => {
+        const listeners = [];
+        return {
+          onMessage: { addListener: (listener) => listeners.push(listener) },
+          onDisconnect: { addListener() {} },
+          postMessage: (message) => {
+            prefetches.push(message);
+            listeners.forEach((listener) => listener({ event: "paper" }));
+          },
+          disconnect() {},
+        };
+      },
       onInstalled: { addListener() {} },
       onStartup: { addListener() {} },
       onMessage: {
@@ -39,8 +54,13 @@ function backgroundHandler() {
       },
     },
     tabs: { onUpdated: { addListener() {} }, query: async () => [] },
+    action: {
+      onClicked: { addListener: (listener) => (actionClick = listener) },
+      setBadgeText: async () => {},
+      setBadgeBackgroundColor: async () => {},
+    },
     sidePanel: {
-      setOptions: async () => {},
+      setOptions: async (value) => options.push(value),
       setPanelBehavior: async () => {},
       open: async (options) => opened.push(options),
     },
@@ -62,6 +82,9 @@ function backgroundHandler() {
   )(browser, paperIdFromUrl, pdfUrlForPaper, createConversationStore);
   const handle = (...args) => handlers.forEach((handler) => handler(...args));
   handle.opened = opened;
+  handle.prefetches = prefetches;
+  handle.options = options;
+  handle.clickAction = (tab) => actionClick(tab);
   return handle;
 }
 
@@ -380,4 +403,37 @@ test("selecting text shows an Ask bubble that opens the panel with the quote", a
   } finally {
     app.dom.window.close();
   }
+});
+
+test("opening a paper page prefetches its PDF once, from arXiv", async () => {
+  const app = await makeReader();
+  try {
+    const loads = app.handle.prefetches;
+    assert.equal(loads.length, 1);
+    assert.equal(loads[0].type, "load");
+    assert.equal(loads[0].context.paperId, "1706.03762v7");
+    assert.equal(loads[0].context.pdfUrl, "https://arxiv.org/pdf/1706.03762v7");
+    await app.navigate("/abs/2401.12345", "Paper B");
+    await app.navigate("/abs/1706.03762v7", "Paper A");
+    assert.deepEqual(
+      loads.map((load) => load.context.paperId),
+      ["1706.03762v7", "2401.12345"],
+    );
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+test("the toolbar icon opens the side panel on any paper tab, including arXiv's PDF view", () => {
+  const handle = backgroundHandler();
+  handle.clickAction({ id: 5, url: "https://arxiv.org/pdf/2507.07955" });
+  assert.deepEqual(handle.options.at(-1), {
+    tabId: 5,
+    path: "sidepanel.html?tabId=5",
+    enabled: true,
+  });
+  assert.deepEqual(handle.opened.at(-1), { tabId: 5 });
+  // Not a paper: nothing opens.
+  handle.clickAction({ id: 6, url: "https://en.wikipedia.org/wiki/ArXiv" });
+  assert.equal(handle.opened.length, 1);
 });

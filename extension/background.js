@@ -4,6 +4,42 @@ import { createConversationStore } from "./conversation-store.js";
 const conversations = createConversationStore(chrome.storage.local);
 const PAPER_SITE = /^https:\/\/(www\.)?(alphaxiv|arxiv)\.org\//;
 const CONTENT_SCRIPTS = ["reader-view.js", "content.js"];
+const HOST = "org.local.paper_sidecar";
+
+// Download, check and cache a paper's PDF as soon as its page opens, so the panel and the
+// first question never wait for it. This uses no model quota. Once per paper per session.
+const prefetched = new Set();
+function prefetchPdf(paperId, url, pdfUrl) {
+  if (prefetched.has(paperId)) return;
+  prefetched.add(paperId);
+  let port;
+  try {
+    port = chrome.runtime.connectNative(HOST);
+  } catch {
+    return;
+  }
+  const finish = () => {
+    clearTimeout(timer);
+    try {
+      port.disconnect();
+    } catch {
+      /* Already closed. */
+    }
+  };
+  const timer = setTimeout(finish, 120000);
+  port.onMessage.addListener((message) => {
+    if (message.event === "paper" || message.event === "error") finish();
+  });
+  port.onDisconnect.addListener(() => {
+    clearTimeout(timer);
+    void chrome.runtime.lastError; // Not installed yet: the panel explains how to fix it.
+  });
+  port.postMessage({
+    type: "load",
+    requestId: "prefetch",
+    context: { paperId, url, pdfUrl, title: "" },
+  });
+}
 // The browser's PDF viewer does not run content scripts, so the floating icon cannot
 // appear there; a badge on the toolbar icon points to the side panel instead.
 const PDF_VIEWER = /^https:\/\/(www\.)?arxiv\.org\/pdf\//;
@@ -30,7 +66,9 @@ async function configurePanel(tabId, url) {
 }
 
 async function initialize(reinject = false) {
-  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  // The toolbar click is handled below, so a paper tab's panel always opens even if the
+  // browser missed enabling it earlier (e.g. tabs that were open before a reload).
+  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
   await chrome.sidePanel.setOptions({ enabled: false });
   // Without the "tabs" permission, URLs are visible only on the paper sites themselves.
   for (const tab of await chrome.tabs.query({})) {
@@ -49,6 +87,16 @@ chrome.runtime.onInstalled.addListener(
   ({ reason }) => void initialize(reason === "install" || reason === "update"),
 );
 chrome.runtime.onStartup.addListener(() => void initialize());
+chrome.action.onClicked.addListener((tab) => {
+  if (!Number.isInteger(tab?.id) || !paperIdFromUrl(tab.url || "")) return;
+  // Both calls are made inside the click, without awaiting in between: open() needs the
+  // user gesture, and the browser applies the options before opening.
+  void chrome.sidePanel
+    .setOptions({ tabId: tab.id, path: `sidepanel.html?tabId=${tab.id}`, enabled: true })
+    .catch(() => {});
+  chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+});
+
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url || change.status === "loading") void configurePanel(tabId, tab.url);
 });
@@ -65,22 +113,9 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   const links = Array.isArray(message.pdfLinks)
     ? message.pdfLinks.filter((link) => typeof link === "string").slice(0, 100)
     : [];
-  reply({ paperId, tabId: sender.tab.id, pdfUrl: paperId ? pdfUrlForPaper(paperId, links) : null });
-});
-
-chrome.runtime.onMessage.addListener((message, sender) => {
-  if (
-    message.type !== "open-side-panel" ||
-    sender.id !== chrome.runtime.id ||
-    sender.frameId !== 0 ||
-    !Number.isInteger(sender.tab?.id)
-  )
-    return;
-  const tabId = sender.tab.id;
-  // open() must run synchronously inside the click's user gesture; enabling first would
-  // break the gesture, so the tab is configured beforehand by onUpdated.
-  chrome.sidePanel.open({ tabId }).catch(() => {});
-  void configurePanel(tabId, sender.tab.url);
+  const pdfUrl = paperId ? pdfUrlForPaper(paperId, links) : null;
+  if (paperId) prefetchPdf(paperId, sender.url || sender.tab.url, pdfUrl);
+  reply({ paperId, tabId: sender.tab.id, pdfUrl });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
