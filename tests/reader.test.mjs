@@ -199,6 +199,24 @@ test("the icon opens the side panel for its own tab, on alphaXiv and arXiv", asy
   }
 });
 
+test("the icon sits above the site's own floating button instead of covering it", async () => {
+  const app = await makeReader();
+  try {
+    const { window } = app;
+    assert.equal(app.launcher().style.bottom, "20px");
+    const button = window.document.createElement("button");
+    button.style.position = "fixed";
+    window.document.body.append(button);
+    const top = window.innerHeight - 76;
+    button.getBoundingClientRect = () => ({ top, bottom: top + 52, width: 52, height: 52 });
+    window.document.elementsFromPoint = () => [app.host, button, window.document.body];
+    window.dispatchEvent(new window.Event("resize"));
+    assert.equal(app.launcher().style.bottom, "88px");
+  } finally {
+    app.dom.window.close();
+  }
+});
+
 test("the icon follows in-site navigation and hides away from paper pages", async () => {
   const app = await makeReader();
   try {

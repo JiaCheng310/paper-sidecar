@@ -39,11 +39,10 @@ export const PROVIDER_PRESETS = [
   { id: "custom", name: "自定义", kind: "openai", baseUrl: "" },
 ];
 
-export function createSettingsView(document, { send, notice, openUrl, onClose }) {
+export function createSettingsView(document, { send, notice, openUrl, onLoginFinished, onClose }) {
   const $ = (id) => document.getElementById(id);
   const view = $("settings-view");
   let providers = [];
-  let defaultPrompt = null;
   let loginId = null;
   let editing = null;
 
@@ -115,21 +114,18 @@ export function createSettingsView(document, { send, notice, openUrl, onClose })
     if (loginId) request("login-cancel", { loginId });
     loginId = null;
     showLoginPending("");
+    onLoginFinished?.();
   });
   $("logout").addEventListener("click", () => request("logout"));
 
   // Prompt -----------------------------------------------------------------
-  function showPrompt(prompt, fallback) {
-    if (fallback) defaultPrompt = fallback;
+  function showPrompt(prompt) {
     const editor = $("prompt-editor");
     // Never overwrite text the user is still editing.
     if (document.activeElement !== editor || !editor.dataset.dirty) {
       editor.value = prompt?.text || "";
       delete editor.dataset.dirty;
     }
-    $("prompt-source").textContent = prompt?.custom
-      ? "当前使用你编辑的提示词。"
-      : `当前使用默认提示词（${defaultPrompt?.path || prompt?.path || ""}）。修改后保存即可覆盖。`;
     $("prompt-reset").disabled = !prompt?.custom;
   }
 
@@ -180,7 +176,6 @@ export function createSettingsView(document, { send, notice, openUrl, onClose })
         return item;
       }),
     );
-    $("provider-empty").hidden = providers.length > 0;
   }
 
   function applyPreset(preset) {
@@ -271,7 +266,7 @@ export function createSettingsView(document, { send, notice, openUrl, onClose })
     initialize(message) {
       providers = message.providers || [];
       renderProviders();
-      showPrompt(message.prompt, message.defaultPrompt);
+      showPrompt(message.prompt);
       if (message.account) showAccount(message.account);
       $("codex-error").hidden = !message.codexError;
       $("codex-error").textContent = message.codexError
@@ -289,7 +284,7 @@ export function createSettingsView(document, { send, notice, openUrl, onClose })
           loginId = message.loginId || null;
           if (message.type === "chatgpt") {
             openUrl(message.authUrl);
-            showLoginPending("已在新标签页打开登录页面，完成后回到这里。");
+            showLoginPending("请在弹出的窗口中完成登录，完成后会自动关闭。");
           } else if (message.type === "chatgptDeviceCode") {
             openUrl(message.verificationUrl);
             showLoginPending("在打开的页面登录后，输入下面的一次性代码：", message.userCode);
@@ -299,13 +294,14 @@ export function createSettingsView(document, { send, notice, openUrl, onClose })
           if (message.method === "account/login/completed") {
             loginId = null;
             showLoginPending("");
+            onLoginFinished?.();
             if (!message.success) notice(`登录未完成：${message.error || "已取消"}`, true);
           }
           return true;
         case "user-settings":
           providers = message.providers || [];
           renderProviders();
-          showPrompt(message.prompt, message.defaultPrompt);
+          showPrompt(message.prompt);
           if (request?.type === "save-prompt") {
             $("prompt-saved").textContent = message.prompt.custom ? "已保存" : "已恢复默认";
           }

@@ -33,11 +33,26 @@ function notice(text = "", error = false) {
   }
 }
 
+// Sign-in opens in its own popup window. A new tab would switch away from this paper
+// tab, which closes its side panel and, with it, the local sign-in callback server.
+let loginWindowId = null;
 const settingsView = createSettingsView(document, {
   send,
   notice,
-  openUrl: (url) => {
-    if (/^https:\/\//.test(url || "")) void chrome.tabs.create({ url });
+  openUrl: async (url) => {
+    if (!/^https:\/\//.test(url || "")) return;
+    const popup = await chrome.windows.create({
+      url,
+      type: "popup",
+      width: 520,
+      height: 720,
+      focused: true,
+    });
+    loginWindowId = popup?.id ?? null;
+  },
+  onLoginFinished: () => {
+    if (loginWindowId !== null) void chrome.windows.remove(loginWindowId).catch(() => {});
+    loginWindowId = null;
   },
   onClose: () => notice(),
 });
@@ -324,7 +339,7 @@ async function refreshContext() {
     context = null;
     $("paper-title").textContent = "打开一篇论文";
     $("paper-id").textContent = "";
-    $("paper-status").textContent = "支持 alphaXiv 与 arXiv 论文页面";
+    $("paper-status").textContent = "";
     $("pdf-link").hidden = true;
     if (changed) {
       selectedText = "";
@@ -351,7 +366,7 @@ async function refreshContext() {
     selectedText = "";
     showSelection();
     $("pdf-link").hidden = true;
-    $("paper-status").textContent = connected ? "已识别 · 提问时读取 PDF" : "等待本机连接";
+    $("paper-status").textContent = "";
     notice();
     renderMessages();
     loadTitle();
@@ -396,7 +411,6 @@ function connect() {
       $("connection").dataset.state = "online";
       notice();
       updateControls();
-      if (context) $("paper-status").textContent = "已识别 · 提问时读取 PDF";
       send("settings");
       loadTitle();
     } else if (message.event === "settings") {
@@ -416,8 +430,7 @@ function connect() {
           context.title = message.title;
           $("paper-title").textContent = message.title;
         }
-        $("paper-status").textContent =
-          `${message.pageCount} 页 · ${message.hasTextLayer ? "原文可读取" : "可按页查看图片"}`;
+        $("paper-status").textContent = `${message.pageCount} 页`;
         $("pdf-link").href = message.pdfUrl;
         $("pdf-link").hidden = false;
       }
@@ -458,7 +471,7 @@ function connect() {
       notice(
         `已清理 ${(message.removedBytes / 1024 / 1024).toFixed(1)} MB 缓存，聊天记录保留。下次提问时重新获取 PDF。`,
       );
-      if (context) $("paper-status").textContent = "已识别 · 提问时读取 PDF";
+      if (context) $("paper-status").textContent = "";
       updateControls();
     } else if (message.event === "error") {
       settingsView.failed(request);

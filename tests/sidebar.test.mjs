@@ -60,11 +60,17 @@ async function makeSidebar({ bound = false } = {}) {
         postMessage: (message) => sent.push(message),
       }),
     },
+    windows: {
+      create: async (options) => {
+        created.push(options);
+        return { id: 77 };
+      },
+      remove: async (id) => created.push({ removed: id }),
+    },
     tabs: {
       query: async () => [otherActive || current],
       get: async (id) => (id === current.id ? current : otherActive),
       sendMessage: async (id) => ({ ...(id === current.id ? current : otherActive), pdfLinks: [] }),
-      create: async (options) => created.push(options),
       onActivated: activated,
       onUpdated: updated,
     },
@@ -149,7 +155,8 @@ test("browsing changes the paper automatically without fetching a PDF", async ()
       hasTextLayer: true,
       pdfUrl: "https://arxiv.org/pdf/1706.03762",
     });
-    assert.match(app.window.document.getElementById("paper-status").textContent, /提问时读取/);
+    // Status stays quiet: no explanatory text, and another paper's PDF never shows here.
+    assert.equal(app.window.document.getElementById("paper-status").textContent, "");
   } finally {
     app.dom.window.close();
   }
@@ -481,10 +488,12 @@ test("settings edit the prompt, add third-party APIs and sign in to ChatGPT", as
       loginId: "L1",
       authUrl: "https://auth.openai.com/oauth?x=1",
     });
-    assert.equal(
-      JSON.stringify(app.created),
-      JSON.stringify([{ url: "https://auth.openai.com/oauth?x=1" }]),
-    );
+    await tick();
+    // A popup window, not a tab: switching tabs would close this panel and the
+    // local sign-in callback server with it.
+    const popup = app.created[0];
+    assert.equal(popup.url, "https://auth.openai.com/oauth?x=1");
+    assert.equal(popup.type, "popup");
     assert.equal(doc.getElementById("login-pending").hidden, false);
     app.messages.emit({
       event: "account-changed",
@@ -492,6 +501,7 @@ test("settings edit the prompt, add third-party APIs and sign in to ChatGPT", as
       success: true,
     });
     assert.equal(doc.getElementById("login-pending").hidden, true);
+    assert.equal(app.created.at(-1).removed, 77);
 
     doc
       .getElementById("settings-view")

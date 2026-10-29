@@ -13,7 +13,7 @@
       <div class="paper-text">
         <h1 id="paper-title">打开一篇论文</h1>
         <div class="paper-meta">
-          <span id="paper-id"></span><span id="paper-status">支持 alphaXiv 与 arXiv 论文页面</span
+          <span id="paper-id"></span><span id="paper-status"></span
           ><a id="pdf-link" target="_blank" rel="noreferrer" hidden>PDF ↗</a>
         </div>
       </div>
@@ -182,12 +182,10 @@
           </form>
         </details>
         <button type="button" id="logout" class="text-button danger" hidden>退出登录</button>
-        <p class="hint">此登录只保存在本扩展的独立目录中，不影响电脑上其他工具的登录。</p>
         <button type="button" id="refresh-settings" class="text-button">刷新模型列表</button>
       </section>
       <section class="settings-section">
         <h3>系统提示词</h3>
-        <p id="prompt-source" class="hint"></p>
         <textarea
           id="prompt-editor"
           rows="12"
@@ -199,16 +197,10 @@
           <button type="button" id="prompt-reset" class="secondary-button">恢复默认</button>
           <span id="prompt-saved" class="hint"></span>
         </div>
-        <p class="hint">保存后从下一条消息开始生效，对所有模型都适用。</p>
       </section>
       <section class="settings-section">
         <h3>其他模型 API</h3>
-        <p class="hint">
-          支持 OpenAI 兼容接口（DeepSeek、Kimi、通义千问、OpenRouter、Ollama 等）和 Anthropic
-          Claude。可以使用 PDF 读取工具，但不支持联网搜索。API Key 只保存在本机。
-        </p>
         <ul id="provider-list"></ul>
-        <p id="provider-empty" class="hint">还没有添加 API。</p>
         <button type="button" id="provider-add" class="secondary-button">＋ 添加 API</button>
         <form id="provider-form" class="provider-form" hidden>
           <h4 id="provider-form-title">添加 API</h4>

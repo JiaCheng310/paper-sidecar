@@ -44,6 +44,7 @@ After updating the code, run `./install.command` again and click **Reload** on t
 - **Enter** to send, **Shift+Enter** for a new line, **Esc** to stop.
 - Select text on the page and click **引用选中内容** (quote selection) to ask about it.
 - **＋** starts a new conversation; the clock button shows earlier ones.
+- Drag the side panel's left edge to make it wider; the browser remembers the width.
 
 ### Privacy
 
@@ -93,6 +94,7 @@ cd paper-sidecar
 - **Enter** 发送，**Shift+Enter** 换行，**Esc** 停止。
 - 在网页上选中文字，点击**引用选中内容**，可以针对这段提问。
 - **＋** 开始新对话，时钟按钮查看以前的对话。
+- 拖动侧栏左边缘可以加宽，浏览器会记住宽度。
 
 ### 隐私
 

@@ -86,13 +86,52 @@ globalThis.PaperSidecarReader = (() => {
       });
     });
 
+    function pinnedAncestor(element) {
+      for (let node = element, depth = 0; node && depth < 6; node = node.parentElement, depth++) {
+        const position = getComputedStyle(node).position;
+        if (position === "fixed" || position === "sticky") return node;
+      }
+      return null;
+    }
+
+    // Sit just above the site's own floating button (alphaXiv has one in this corner)
+    // instead of covering it. The corner is probed at runtime, so layout changes are fine.
+    function place() {
+      let bottom = 20;
+      const width = window.innerWidth,
+        height = window.innerHeight;
+      let top = Infinity;
+      for (const [x, y] of [
+        [width - 44, height - 44],
+        [width - 30, height - 30],
+        [width - 64, height - 64],
+      ]) {
+        for (const element of document.elementsFromPoint?.(x, y) || []) {
+          if (element === host || element === document.body || element === document.documentElement)
+            continue;
+          const rect = element.getBoundingClientRect();
+          if (rect.width > 120 || rect.height > 120 || rect.bottom < height - 140) continue;
+          if (pinnedAncestor(element)) top = Math.min(top, rect.top);
+        }
+      }
+      if (top !== Infinity) bottom = Math.max(20, height - top + 12);
+      launcher.style.bottom = `${bottom}px`;
+      error.style.bottom = `${bottom + 4}px`;
+    }
+
     function mount() {
       if (!host.isConnected) (document.body || document.documentElement).append(host);
+      if (!launcher.hidden) place();
     }
 
     function setPaper(paper) {
       launcher.hidden = !paper;
+      if (paper) place();
     }
+
+    window.addEventListener("resize", () => {
+      if (!launcher.hidden) place();
+    });
 
     function showError(message) {
       error.textContent = message;
