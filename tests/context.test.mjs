@@ -36,6 +36,7 @@ test("the reader selects the current PDF version and ignores unrelated or unsafe
   );
   assert.equal(
     pdfUrlForPaper("1706.03762", ["https://pdfs.assets.alphaxiv.org/1706.03762v7.pdf"]),
-    "https://pdfs.assets.alphaxiv.org/1706.03762v7.pdf",
+    "https://arxiv.org/pdf/1706.03762v7",
+    "alphaXiv links only contribute the version; the PDF always comes from arXiv",
   );
 });

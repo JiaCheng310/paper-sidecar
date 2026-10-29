@@ -43,10 +43,13 @@ export function pdfUrlForPaper(paperId, links = []) {
         !url.password &&
         !url.port &&
         pdf &&
-        ["arxiv.org", "www.arxiv.org", "pdfs.assets.alphaxiv.org"].includes(url.hostname) &&
         samePaper(paperId, paperIdFromUrl(value))
-      )
-        return url.href;
+      ) {
+        // Never download from alphaXiv's servers; keep only the version its link names.
+        if (url.hostname === "pdfs.assets.alphaxiv.org")
+          return `https://arxiv.org/pdf/${paperIdFromUrl(value)}`;
+        if (["arxiv.org", "www.arxiv.org"].includes(url.hostname)) return url.href;
+      }
     } catch {
       /* Ignore malformed links in the page. */
     }

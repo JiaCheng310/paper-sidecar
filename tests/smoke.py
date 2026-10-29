@@ -12,7 +12,7 @@ async def main():
             print(json.dumps(event, ensure_ascii=False), flush=True)
     bridge = Bridge(receive)
     context = {"paperId": "1706.03762v7", "url": "https://www.alphaxiv.org/abs/1706.03762v7",
-               "title": "Attention Is All You Need", "pdfUrl": "https://pdfs.assets.alphaxiv.org/1706.03762v7.pdf"}
+               "title": "Attention Is All You Need", "pdfUrl": "https://arxiv.org/pdf/1706.03762v7"}
     try:
         await bridge.handle({"type": "load", "requestId": "load-test", "context": context})
         assert events[-1]["event"] == "paper", events[-1]

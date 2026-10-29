@@ -47,7 +47,7 @@ After updating the code, run `./install.command` again and click **Reload** on t
 
 ### Privacy
 
-Everything stays on your Mac: API keys and settings in `~/Library/Application Support/paper-sidecar/`, PDF cache in `~/Library/Caches/paper-sidecar/` (max 512 MB). Your questions are sent to the model provider you choose.
+PDFs come only from arXiv. Everything stays on your Mac: API keys and settings in `~/Library/Application Support/paper-sidecar/`, PDF cache in `~/Library/Caches/paper-sidecar/` (max 512 MB). Your questions are sent to the model provider you choose.
 
 ### Troubleshooting
 
@@ -96,7 +96,7 @@ cd paper-sidecar
 
 ### 隐私
 
-数据都在你的 Mac 上：API Key 和设置在 `~/Library/Application Support/paper-sidecar/`，PDF 缓存在 `~/Library/Caches/paper-sidecar/`（最多 512 MB）。你的提问会发送给你选择的模型服务商。
+PDF 只从 arXiv 下载。数据都在你的 Mac 上：API Key 和设置在 `~/Library/Application Support/paper-sidecar/`，PDF 缓存在 `~/Library/Caches/paper-sidecar/`（最多 512 MB）。你的提问会发送给你选择的模型服务商。
 
 ### 常见问题
 
@@ -115,6 +115,20 @@ uv run python -m unittest discover -s tests -p 'test_*.py'      # Python tests
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the code layout. 代码结构见 CONTRIBUTING.md。
 
+## Disclaimer · 免责声明
+
+Paper Sidecar is an independent, non-commercial open-source project. It is not affiliated with, endorsed by or sponsored by arXiv or alphaXiv; their names are trademarks of their respective owners and are used only to describe compatibility.
+
+- It only changes how pages look in **your own browser**. It does not call alphaXiv's AI or any alphaXiv API.
+- PDFs are downloaded **only from arXiv**, one at a time with at least 3 seconds between requests, and cached on your Mac for your personal reading. Nothing is redistributed.
+- You are responsible for following the terms of the sites you use, the license of each paper, and the terms of the model provider you choose.
+
+Paper Sidecar 是独立的非商业开源项目，与 arXiv、alphaXiv 没有任何关联，也未获得其认可或赞助；相关名称归各自所有者，仅用于说明兼容性。
+
+- 它只改变**你自己浏览器**中的页面显示，不调用 alphaXiv 的 AI 或任何 alphaXiv 接口。
+- PDF **只从 arXiv 下载**，每次一个、间隔至少 3 秒，仅缓存在你的 Mac 上供个人阅读，不会再分发。
+- 请自行遵守所用网站的条款、每篇论文的许可，以及你所选模型服务商的条款。
+
 ## License · 许可证
 
-[AGPL-3.0](LICENSE). Not affiliated with alphaXiv. 本项目与 alphaXiv 官方无关。
+[AGPL-3.0](LICENSE)

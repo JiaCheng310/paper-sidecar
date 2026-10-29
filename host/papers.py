@@ -2,6 +2,8 @@
 
 import base64
 import re
+import threading
+import time
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
@@ -14,7 +16,15 @@ MAX_CACHED_BYTES = 48 * 1024 * 1024
 MAX_CACHED_PAPERS = 2
 MAX_PAGES = 600
 ARXIV_ID = re.compile(r"(?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v[1-9]\d*)?\Z", re.I)
-PDF_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org", "pdfs.assets.alphaxiv.org"}
+# PDFs are only ever downloaded from arXiv itself. alphaXiv's asset links are parsed for
+# their version number but never fetched.
+PDF_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}
+ASSET_HOSTS = {"pdfs.assets.alphaxiv.org"}
+# arXiv asks automated clients for one connection at a time and >= 3 s between requests.
+ARXIV_REQUEST_GAP = 3.0
+USER_AGENT = "PaperSidecar/0.1 (+https://github.com/JiaCheng310/paper-sidecar)"
+_arxiv_lock = threading.Lock()
+_arxiv_last_request = 0.0
 PAGE_HOSTS = {"www.alphaxiv.org", "alphaxiv.org", "arxiv.org", "www.arxiv.org"}
 
 
@@ -26,7 +36,7 @@ def validate_id(paper_id):
 
 def id_from_url(url):
     parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in PAGE_HOSTS | PDF_HOSTS:
+    if parsed.scheme != "https" or parsed.hostname not in PAGE_HOSTS | PDF_HOSTS | ASSET_HOSTS:
         return None
     path = urllib.parse.unquote(parsed.path).strip("/")
     path = re.sub(r"^(abs|html|pdf|overview)/", "", path)
@@ -38,7 +48,7 @@ def validate_pdf_url(url):
     parsed = urllib.parse.urlparse(url)
     if (parsed.scheme != "https" or parsed.hostname not in PDF_HOSTS
             or parsed.port not in (None, 443) or parsed.username or parsed.password):
-        raise ValueError("PDF 地址必须来自 arXiv 或 alphaXiv 的公开 PDF 域名。")
+        raise ValueError("PDF 地址必须来自 arXiv 的公开 PDF 域名。")
     return url
 
 
@@ -50,12 +60,21 @@ class SafeRedirect(urllib.request.HTTPRedirectHandler):
 
 def fetch_pdf(url):
     """Bound response bytes before parsing; redirect validation also blocks local URLs."""
+    global _arxiv_last_request
     validate_pdf_url(url)
     opener = urllib.request.build_opener(SafeRedirect())
     request = urllib.request.Request(url, headers={
-        "User-Agent": "PaperSidecar/0.1 (personal academic reader)",
-        "Accept": "application/pdf", "Cache-Control": "no-store",
+        "User-Agent": USER_AGENT, "Accept": "application/pdf", "Cache-Control": "no-store",
     })
+    with _arxiv_lock:
+        time.sleep(max(0.0, _arxiv_last_request + ARXIV_REQUEST_GAP - time.monotonic()))
+        try:
+            return _download(opener, request)
+        finally:
+            _arxiv_last_request = time.monotonic()
+
+
+def _download(opener, request):
     with opener.open(request, timeout=30) as response:
         length = response.headers.get("Content-Length")
         if length and int(length) > MAX_PDF_BYTES:
@@ -79,7 +98,9 @@ def pdf_candidates(context):
         base = re.sub(r"v\d+$", "", paper_id)
         matches = (hinted_id == paper_id if re.search(r"v\d+$", paper_id)
                    else hinted_id and re.sub(r"v\d+$", "", hinted_id) == base)
-        if matches:
+        if matches and urllib.parse.urlparse(hinted).hostname in ASSET_HOSTS:
+            candidates.append("https://arxiv.org/pdf/" + hinted_id)  # Same version, from arXiv.
+        elif matches:
             candidates.append(validate_pdf_url(hinted))
     candidates.append("https://arxiv.org/pdf/" + paper_id)
     return list(dict.fromkeys(candidates))

@@ -16,8 +16,7 @@
     "https://alphaxiv.org/*",
     "https://www.alphaxiv.org/*",
     "https://arxiv.org/*",
-    "https://www.arxiv.org/*",
-    "https://pdfs.assets.alphaxiv.org/*"
+    "https://www.arxiv.org/*"
   ],
   "action": {
     "default_title": "打开 Paper Sidecar",

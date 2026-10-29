@@ -30,12 +30,33 @@ class PapersTest(unittest.TestCase):
         context = {"paperId": "1706.03762v1", "url": "https://www.alphaxiv.org/abs/1706.03762v1",
                    "pdfUrl": "https://pdfs.assets.alphaxiv.org/1706.03762v7.pdf"}
         self.assertEqual(pdf_candidates(context), ["https://arxiv.org/pdf/1706.03762v1"])
+        # alphaXiv asset links are never fetched; their version maps to arXiv.
+        latest = {**context, "paperId": "1706.03762", "url": "https://www.alphaxiv.org/abs/1706.03762"}
+        self.assertEqual(pdf_candidates(latest), ["https://arxiv.org/pdf/1706.03762v7", "https://arxiv.org/pdf/1706.03762"])
+        with self.assertRaises(ValueError):
+            validate_pdf_url("https://pdfs.assets.alphaxiv.org/1706.03762v7.pdf")
         for url in ["http://127.0.0.1/private", "file:///etc/passwd", "https://arxiv.org.evil.test/a", "https://arxiv.org:444/a"]:
             with self.assertRaises(ValueError):
                 validate_pdf_url(url)
         context["paperId"] = "../../etc/passwd"
         with self.assertRaises(ValueError):
             pdf_candidates(context)
+
+    def test_arxiv_downloads_are_spaced_and_identify_the_tool(self):
+        import time
+        from unittest import mock
+        from host import papers
+        calls = []
+
+        def download(opener, request):
+            calls.append((time.monotonic(), request.get_header("User-agent")))
+            return b"%PDF-", request.full_url
+
+        with mock.patch.object(papers, "ARXIV_REQUEST_GAP", 0.2), mock.patch.object(papers, "_download", download):
+            papers.fetch_pdf("https://arxiv.org/pdf/1706.03762")
+            papers.fetch_pdf("https://arxiv.org/pdf/2401.12345")
+        self.assertGreaterEqual(calls[1][0] - calls[0][0], 0.19)
+        self.assertIn("github.com/JiaCheng310/paper-sidecar", calls[0][1])
 
     def test_memory_cache_evicts_old_documents_but_protects_active_paper(self):
         store = PaperStore()
