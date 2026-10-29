@@ -15,6 +15,18 @@ def make_paper(key="1706.03762"):
 
 
 class PapersTest(unittest.TestCase):
+    def test_full_text_covers_every_page_and_marks_where_it_stops(self):
+        paper = make_paper()
+        text, cursor = paper.full_text()
+        self.assertIsNone(cursor)
+        for page in (1, 2, 3):
+            self.assertIn(f"[PDF page {page}]\nPage {page}:", text)
+        first_page = len(" ".join(paper.document[0].get_text(sort=True).split()))
+        cut, cursor = paper.full_text(max_chars=first_page + 10)
+        self.assertEqual(cursor, {"start_page": 2, "offset": 10})
+        self.assertIn("[PDF page 2]", cut)
+        self.assertNotIn("[PDF page 3]", cut)
+
     def test_page_reads_resume_without_losing_text(self):
         paper = make_paper()
         first = paper.read_pages(1, 1, max_chars=100)

@@ -233,7 +233,9 @@ class DirectSession:
                   "input_schema": tool["inputSchema"]} for tool in tool_specs(self.provider.get("vision"))]
         url = anthropic_root(self.provider) + "/messages"
         for round_index in range(MAX_TOOL_ROUNDS + 1):
-            body = {"model": self.model, "max_tokens": 16000, "system": self.system,
+            # The system prompt carries the whole paper; mark it cacheable across turns.
+            system = [{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}]
+            body = {"model": self.model, "max_tokens": 16000, "system": system,
                     "messages": messages, "stream": True}
             if round_index < MAX_TOOL_ROUNDS:
                 body["tools"] = tools

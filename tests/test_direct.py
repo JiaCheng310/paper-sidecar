@@ -119,7 +119,9 @@ class DirectEngineTest(unittest.IsolatedAsyncioTestCase):
         first, second = FakeAPI.requests
         self.assertEqual(first["path"], "/v1/messages")
         self.assertEqual(first["headers"]["X-Api-Key"], "sk-ant")
-        self.assertEqual(first["body"]["system"], "SYSTEM")
+        # The system prompt (which carries the paper) is marked for prompt caching.
+        self.assertEqual(first["body"]["system"], [
+            {"type": "text", "text": "SYSTEM", "cache_control": {"type": "ephemeral"}}])
         result = second["body"]["messages"][-1]["content"][0]
         self.assertEqual(result["tool_use_id"], "t1")
         self.assertEqual(result["content"][1]["source"], {

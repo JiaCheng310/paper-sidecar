@@ -247,24 +247,23 @@ class QuotaTest(unittest.IsolatedAsyncioTestCase):
             await bridge.close()
 
 
-class OpeningPagesTest(unittest.TestCase):
-    def test_first_turn_includes_the_opening_pages(self):
-        from host.main import opening_pages
+class PaperContextTest(unittest.TestCase):
+    def test_the_whole_paper_is_given_to_the_model(self):
+        from host.main import paper_context
 
         class Paper:
-            def read_pages(self, start_page, count, max_chars):
-                self.args = (start_page, count, max_chars)
-                return {"pages": [{"page": 1, "text": "Abstract text"}, {"page": 2, "text": "  "}],
-                        "next_cursor": {"start_page": 3, "offset": 0}}
+            def metadata(self):
+                return {"paperId": "1706.03762", "pageCount": 2}
 
-        paper = Paper()
-        text = opening_pages(paper)
-        self.assertEqual(paper.args, (1, 3, 8000))
-        self.assertIn("[PDF page 1]\nAbstract text", text)
-        self.assertNotIn("[PDF page 2]", text)
-        self.assertIn('"start_page": 3', text)
+            def full_text(self, max_chars):
+                return "[PDF page 1]\nAbstract\n\n[PDF page 2]\nMethod", None
 
-        class Broken:
-            def read_pages(self, *args, **kwargs):
-                raise ValueError("no text")
-        self.assertEqual(opening_pages(Broken()), "")
+        text = paper_context(Paper())
+        self.assertIn("[PDF page 1]\nAbstract", text)
+        self.assertIn("[PDF page 2]\nMethod", text)
+        self.assertIn("The complete text is included.", text)
+
+        class Long(Paper):
+            def full_text(self, max_chars):
+                return "[PDF page 1]\n...", {"start_page": 40, "offset": 120}
+        self.assertIn('continue with read_paper_pages from {"start_page": 40, "offset": 120}', paper_context(Long()))

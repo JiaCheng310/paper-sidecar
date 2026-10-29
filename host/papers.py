@@ -178,6 +178,23 @@ class Paper:
                 "next_cursor": next_cursor, "source": self.url,
                 "note": "Only the returned pages were read. Use next_cursor to continue; use view_paper_page for figures, formulas or scanned pages."}
 
+    def full_text(self, max_chars=150000):
+        """The whole paper with [PDF page N] markers; the cursor says where a cut-off text stops."""
+        parts, used = [], 0
+        for number, page in enumerate(self.document, start=1):
+            # Layout padding is collapsed: same words, far fewer tokens.
+            text = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", page.get_text(sort=True))).strip()
+            if not text:
+                parts.append(f"[PDF page {number}]\n(no text layer; use view_paper_page)")
+                continue
+            if used + len(text) > max_chars:
+                keep = max(0, max_chars - used)
+                parts.append(f"[PDF page {number}]\n{text[:keep]}")
+                return "\n\n".join(parts), {"start_page": number, "offset": keep}
+            parts.append(f"[PDF page {number}]\n{text}")
+            used += len(text)
+        return "\n\n".join(parts), None
+
     def search(self, query):
         terms = list(dict.fromkeys(re.findall(r"[\w-]{2,}", query.lower())))[:20]
         if not terms:

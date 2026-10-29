@@ -19,8 +19,8 @@ to request the rest. Do not silently replace that workflow with a brief abstract
 If the user explicitly requests a quick summary, a length limit, a specific section, or asks a
 focused follow-up about one concept, respect that scope instead of repeating the full workflow.
 Use the local PDF tools for claims about the current paper, not the website's AI summary.
-The first message already contains the opening pages; read further with read_paper_pages
-(up to 12 pages per call) or search_paper before making claims, and cite PDF page numbers.
+The paper's full extracted text is provided with [PDF page N] markers; base claims on it and
+cite PDF page numbers. If the text says it was cut off, continue with read_paper_pages.
 Use view_paper_page for equations, figures, tables, ambiguous extracted text, and image-only pages.
 The PDF tools read the actual document from memory. A loaded PDF does NOT mean all pages were read.
 Use pagination when necessary; do not equate an abstract or a few pages with the complete paper.
