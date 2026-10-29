@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="vendor/katex.min.css" />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body>
+  <body class="booting">
     <section class="paper-card standalone-only">
       <img class="mark" src="icons/icon.svg" alt="" />
       <div class="paper-text">
@@ -18,9 +18,19 @@
         </div>
       </div>
       <span id="model" hidden>本机运行</span>
+      <button
+        type="button"
+        id="close-panel"
+        class="icon-button"
+        aria-label="关闭"
+        title="关闭"
+        hidden
+      >
+        ×
+      </button>
     </section>
     <main id="conversation" aria-live="polite">
-      <section id="welcome">
+      <section id="welcome" hidden>
         <img class="welcome-mark" src="icons/icon.svg" alt="" />
         <h2>想了解这篇论文的什么？</h2>
         <p>回答基于 PDF 原文，并标注页码。</p>
@@ -138,7 +148,8 @@
         </div>
       </form>
       <div class="footnote">
-        <span id="connection">正在连接本机…</span
+        <span class="status-left"
+          ><span id="connection">正在连接本机…</span><span id="quota" hidden></span></span
         ><span class="cache-controls"
           ><span id="cache-size">论文缓存</span
           ><button type="button" id="clear-cache" class="text-button" disabled>

@@ -140,14 +140,20 @@ async function makeSidebar({ bound = false } = {}) {
   };
 }
 
-test("browsing changes the paper automatically without fetching a PDF", async () => {
+test("browsing follows the paper and prefetches each PDF exactly once", async () => {
   const app = await makeSidebar();
   try {
+    const loads = () =>
+      app.sent
+        .filter((message) => message.type === "load")
+        .map((message) => message.context.paperId);
     assert.equal(app.window.document.getElementById("paper-id").textContent, "1706.03762");
-    assert.equal(app.sent.filter((message) => message.type === "load").length, 0);
+    assert.deepEqual(loads(), ["1706.03762"]);
     await app.navigate("2401.12345v2", "Paper B");
     assert.equal(app.window.document.getElementById("paper-title").textContent, "Paper B");
-    assert.equal(app.sent.filter((message) => message.type === "load").length, 0);
+    assert.deepEqual(loads(), ["1706.03762", "2401.12345v2"]);
+    await app.navigate("2401.12345v2", "Paper B");
+    assert.deepEqual(loads(), ["1706.03762", "2401.12345v2"]);
     app.messages.emit({
       event: "paper",
       paperId: "1706.03762",
@@ -359,7 +365,9 @@ test("streaming updates only the active answer and finished answers can be copie
       .getElementById("composer")
       .dispatchEvent(new app.window.Event("submit", { cancelable: true }));
     await tick();
-    assert.ok(doc.querySelector(".message.streaming .typing"));
+    assert.equal(doc.querySelector(".message.streaming .thinking").textContent, "思考中");
+    assert.equal(doc.querySelector(".message .label"), null);
+    assert.equal(doc.getElementById("notice").hidden, true);
     const question = doc.querySelector(".message.user");
     const chat = app.sent.find((message) => message.type === "chat");
     const delta = (text) =>
@@ -370,9 +378,18 @@ test("streaming updates only the active answer and finished answers can be copie
         itemId: "one",
         text,
       });
-    delta("First part");
-    assert.match(doc.querySelector(".message.streaming .body").textContent, /First part/);
-    delta(" and more");
+    const frames = () => new Promise((resolve) => setTimeout(resolve, 150));
+    delta("First paragraph.\n\nSecond");
+    await frames();
+    const body = doc.querySelector(".message.streaming .body");
+    assert.match(body.textContent, /First paragraph\.\s*Second/);
+    // Finished paragraphs are rendered once and kept; only the tail re-renders.
+    const stable = body.querySelector(".stream-stable");
+    const firstParagraph = stable.firstElementChild;
+    delta(" paragraph grows");
+    await frames();
+    assert.equal(stable.firstElementChild, firstParagraph);
+    assert.match(body.querySelector(".stream-tail").textContent, /Second paragraph grows/);
     assert.equal(doc.querySelector(".message.user"), question);
     app.messages.emit({
       event: "done",
@@ -614,11 +631,41 @@ test("in the browser PDF viewer the real title is loaded from the PDF right away
       "Distributionally Robust Receive Combining",
     );
     await app.navigate("2401.12345", "2401.12345");
-    assert.equal(app.sent.filter((message) => message.type === "load").length, 1);
+    assert.equal(
+      app.sent.filter(
+        (message) => message.type === "load" && message.context.paperId === "2401.12345",
+      ).length,
+      1,
+    );
     assert.equal(
       doc.getElementById("paper-title").textContent,
       "Distributionally Robust Receive Combining",
     );
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+test("the footer shows ChatGPT plan usage, and the in-page panel can ask to close", async () => {
+  const app = await makeSidebar({ bound: true });
+  try {
+    const doc = app.window.document;
+    // makeSidebar signs in with a ChatGPT account, so the quota is requested.
+    const quota = app.sent.filter((message) => message.type === "quota").at(-1);
+    assert.ok(quota);
+    app.messages.emit({
+      event: "quota",
+      requestId: quota.requestId,
+      windows: [
+        { minutes: 300, usedPercent: 23.4, resetsAt: 1793260000 },
+        { minutes: 10080, usedPercent: 41, resetsAt: null },
+      ],
+    });
+    assert.equal(doc.getElementById("quota").textContent, "额度 5h 23% · 周 41%");
+    assert.match(doc.getElementById("quota").title, /5h窗口已用 23%/);
+    app.messages.emit({ event: "quota", windows: [], reached: "rate_limit" });
+    assert.equal(doc.getElementById("quota").textContent, "额度已用完");
+    assert.equal(doc.getElementById("close-panel").hidden, true);
   } finally {
     app.dom.window.close();
   }

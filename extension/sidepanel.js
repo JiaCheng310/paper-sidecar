@@ -6,6 +6,16 @@ const $ = (id) => document.getElementById(id);
 const HOST = "org.local.paper_sidecar";
 const panelParams = new URLSearchParams(location.search);
 const sourceTabId = Number(panelParams.get("tabId"));
+// Shown inside a paper page (see reader-view.js) rather than the browser's side panel.
+const parentOrigin = panelParams.get("parent");
+const embedded =
+  panelParams.get("embedded") === "1" &&
+  [
+    "https://www.alphaxiv.org",
+    "https://alphaxiv.org",
+    "https://arxiv.org",
+    "https://www.arxiv.org",
+  ].includes(parentOrigin);
 const library = (await chrome.storage.local.get("library")).library || {};
 let context = null,
   port = null,
@@ -16,9 +26,6 @@ const turns = new Map();
 let refreshSequence = 0,
   lastTabId = null;
 let saveQueue = Promise.resolve();
-let streamTimer = null,
-  streamRenderedAt = 0;
-const STREAM_RENDER_INTERVAL = 80;
 const pending = new Map();
 const options = await createReaderOptions(document, chrome.storage.local, (text) =>
   notice(text, true),
@@ -56,6 +63,48 @@ const settingsView = createSettingsView(document, {
   },
   onClose: () => notice(),
 });
+
+// ChatGPT plan usage (Codex rate limits), shown quietly in the footer.
+let chatgptSignedIn = false;
+function windowLabel(minutes) {
+  if (minutes === 10080) return "周";
+  if (minutes >= 1440) return `${Math.round(minutes / 1440)}天`;
+  if (minutes) return `${Math.round(minutes / 60)}h`;
+  return "";
+}
+function showQuota({ windows = [], reached } = {}) {
+  const quota = $("quota");
+  quota.hidden = !windows.length && !reached;
+  if (quota.hidden) return;
+  quota.classList.toggle("low", !!reached || windows.some((item) => item.usedPercent >= 90));
+  quota.textContent = reached
+    ? "额度已用完"
+    : `额度 ${windows.map((item) => `${windowLabel(item.minutes)} ${Math.round(item.usedPercent)}%`.trim()).join(" · ")}`;
+  quota.title = windows
+    .map((item) => {
+      const reset = item.resetsAt
+        ? new Date(item.resetsAt * 1000).toLocaleString("zh-CN", {
+            month: "numeric",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "未知";
+      return `${windowLabel(item.minutes) || "当前"}窗口已用 ${Math.round(item.usedPercent)}%，${reset} 重置`;
+    })
+    .join("\n");
+}
+function requestQuota() {
+  if (!chatgptSignedIn) {
+    $("quota").hidden = true;
+    return;
+  }
+  try {
+    send("quota");
+  } catch {
+    /* Shown again once reconnected. */
+  }
+}
 
 function refreshSettings() {
   try {
@@ -97,18 +146,18 @@ function entry(key) {
 
 // In the browser's PDF viewer the tab title is only the arXiv number.
 const looksLikeId = (title) => /^\[?[\w./-]*\d{4}\.?\d*(v\d+)?\]?$/.test(title || "");
-let titleRequested = null;
+let prefetched = null;
 const pdfTitles = new Map();
 
-// Fetch the PDF once to show its real title; it is the PDF the user is already viewing.
-function loadTitle() {
-  if (!connected || !context || !looksLikeId(context.title) || titleRequested === context.paperId)
-    return;
-  titleRequested = context.paperId;
+// Fetch the PDF as soon as a paper is shown, so the first question does not wait for the
+// download, and the PDF viewer gets the real title. Each paper is fetched once per panel.
+function prefetchPaper() {
+  if (!connected || !context || prefetched === context.paperId) return;
+  prefetched = context.paperId;
   try {
     send("load", { context });
   } catch {
-    titleRequested = null;
+    prefetched = null;
   }
 }
 
@@ -201,12 +250,19 @@ function updateJumpButton() {
 }
 
 function renderAnswer(body, message, streaming) {
+  if (streaming && message.text) {
+    // Re-entering a paper mid-answer shows what has arrived so far, then keeps flowing.
+    const turn = [...turns.values()].find((item) => item.answer === message);
+    if (turn) turn.shown = message.text.length;
+    renderStreamingBody(body, message.text);
+    return;
+  }
   if (!message.text && streaming) {
-    const typing = document.createElement("span");
-    typing.className = "typing";
-    typing.setAttribute("aria-label", "正在思考");
-    typing.append(...[0, 1, 2].map(() => document.createElement("i")));
-    body.replaceChildren(typing);
+    // One quiet indicator until the first words arrive; no progress chatter.
+    const thinking = document.createElement("span");
+    thinking.className = "thinking";
+    thinking.textContent = "思考中";
+    body.replaceChildren(thinking);
     return;
   }
   renderBody(body, message.text || "", false);
@@ -234,23 +290,21 @@ function messageNode(message) {
   const streaming = [...turns.values()].some((turn) => turn.answer === message);
   const node = document.createElement("article");
   node.className = `message ${message.role}${streaming ? " streaming" : ""}`;
-  const label = document.createElement("div");
-  label.className = "label";
-  const name = document.createElement("span");
-  name.textContent = message.role === "user" ? "你" : "Sidecar";
-  label.append(name);
-  if (message.role === "assistant" && !streaming && message.text) label.append(copyButton(message));
   const body = document.createElement("div");
   body.className = "body";
   if (message.role === "user") renderBody(body, message.text, true);
   else renderAnswer(body, message, streaming);
-  node.append(label, body);
+  node.append(body);
+  if (message.role === "assistant" && !streaming && message.text) {
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+    actions.append(copyButton(message));
+    node.append(actions);
+  }
   return node;
 }
 
 function renderMessages() {
-  clearTimeout(streamTimer);
-  streamTimer = null;
   const shouldScroll = nearBottom();
   const messages = context ? entry(context.key).messages : [];
   $("welcome").hidden = messages.length > 0;
@@ -260,26 +314,68 @@ function renderMessages() {
   updateControls();
 }
 
-// Streaming re-renders only the answer being written, at most every 80 ms. Rebuilding
-// every message (Markdown and KaTeX included) on each delta made long chats sluggish.
-function renderStreaming() {
-  streamTimer = null;
-  streamRenderedAt = Date.now();
+// Streaming stays smooth on long answers:
+// - Text is revealed a few characters per animation frame, faster when there is a backlog,
+//   so bursty model output reads as an even flow and never falls behind.
+// - Finished paragraphs are rendered once (Markdown + KaTeX) and cached; each frame only
+//   re-renders the paragraph still being written.
+const requestFrame = (callback) =>
+  window.requestAnimationFrame ? window.requestAnimationFrame(callback) : setTimeout(callback, 16);
+let streamFrame = 0;
+
+function stableSplit(text) {
+  // Split at the last blank line that is not inside a code fence or a $$ block.
+  for (
+    let index = text.lastIndexOf("\n\n");
+    index > 0;
+    index = text.lastIndexOf("\n\n", index - 1)
+  ) {
+    const head = text.slice(0, index);
+    if ((head.match(/```/g) || []).length % 2 === 0 && (head.match(/\$\$/g) || []).length % 2 === 0)
+      return index;
+  }
+  return 0;
+}
+
+function renderStreamingBody(body, text) {
+  let stable = body.querySelector(":scope > .stream-stable");
+  let tail = body.querySelector(":scope > .stream-tail");
+  if (!stable || !tail) {
+    stable = document.createElement("div");
+    stable.className = "stream-stable";
+    tail = document.createElement("div");
+    tail.className = "stream-tail";
+    body.replaceChildren(stable, tail);
+    stable.dataset.text = "";
+  }
+  const cut = stableSplit(text);
+  const head = text.slice(0, cut);
+  if (stable.dataset.text !== head) {
+    renderBody(stable, head, false);
+    stable.dataset.text = head;
+  }
+  renderBody(tail, text.slice(cut), false);
+}
+
+function streamStep() {
+  streamFrame = 0;
   const turn = currentTurn();
   if (!turn) return;
+  const full = turn.answer.text;
+  const backlog = full.length - turn.shown;
+  if (backlog > 0) turn.shown += Math.max(3, Math.ceil(backlog / 8));
   const node = $("messages").lastElementChild;
   if (!node?.classList.contains("streaming")) return renderMessages();
+  if (!full) return;
   const shouldScroll = nearBottom();
-  renderAnswer(node.querySelector(".body"), turn.answer, true);
+  renderStreamingBody(node.querySelector(".body"), full.slice(0, turn.shown));
   if (shouldScroll) scrollToBottom();
   updateJumpButton();
+  if (turn.shown < full.length) scheduleStreamRender();
 }
 
 function scheduleStreamRender() {
-  if (streamTimer) return;
-  const wait = STREAM_RENDER_INTERVAL - (Date.now() - streamRenderedAt);
-  if (wait <= 0) renderStreaming();
-  else streamTimer = setTimeout(renderStreaming, wait);
+  if (!streamFrame) streamFrame = requestFrame(streamStep);
 }
 
 function resizeQuestion() {
@@ -369,7 +465,7 @@ async function refreshContext() {
     $("paper-status").textContent = "";
     notice();
     renderMessages();
-    loadTitle();
+    prefetchPaper();
   }
   updateControls();
   return true;
@@ -412,12 +508,20 @@ function connect() {
       notice();
       updateControls();
       send("settings");
-      loadTitle();
+      prefetchPaper();
     } else if (message.event === "settings") {
       pending.delete(message.requestId);
       options.initialize(message);
       settingsView.initialize(message);
       updateControls();
+      chatgptSignedIn = message.account?.account?.type === "chatgpt";
+      requestQuota();
+      // Shown instantly the next time a panel opens, then refreshed in the background.
+      const { requestId, event, ...catalog } = message;
+      void chrome.storage.local.set({ settingsCache: catalog }).catch(() => {});
+    } else if (message.event === "quota") {
+      pending.delete(message.requestId);
+      showQuota(message);
     } else if (message.event === "runtime-settings") {
       if (turnFor(message.requestId) && turnFor(message.requestId) === currentTurn())
         options.showRuntime(message.settings);
@@ -436,9 +540,7 @@ function connect() {
       }
       if (pending.get(message.requestId)?.type === "load") pending.delete(message.requestId);
     } else if (message.event === "status") {
-      const turn = turnFor(message.requestId);
-      if (turn ? turn === currentTurn() : message.paperId === context?.paperId)
-        notice(message.text);
+      /* Progress is shown only as the single "thinking" indicator. */
     } else if (message.event === "delta" && turnFor(message.requestId)) {
       const turn = turnFor(message.requestId);
       turn.parts[message.itemId] = (turn.parts[message.itemId] || "") + message.text;
@@ -451,7 +553,8 @@ function connect() {
         message.text || (message.interrupted ? "回答已停止。" : "没有返回回答，请重试。");
       turns.delete(turn.key);
       pending.delete(message.requestId);
-      if (visible) notice(message.interrupted ? "回答已停止" : "");
+      if (visible) notice();
+      requestQuota();
       renderMessages();
       void persist(turn.key);
     } else if (message.event === "reset") {
@@ -537,13 +640,14 @@ $("composer").addEventListener("submit", async (event) => {
       paperId: context.paperId,
       answer,
       parts: {},
+      shown: 0,
     });
     void persist(context.key);
     $("question").value = "";
     resizeQuestion();
     selectedText = "";
     showSelection();
-    notice("正在阅读并思考…");
+    notice();
     renderMessages();
   } catch (error) {
     notice(error.message, true);
@@ -567,7 +671,6 @@ $("stop").addEventListener("click", () => {
   if (!turn) return;
   try {
     send("cancel", { paperId: turn.paperId });
-    notice("正在停止…");
   } catch (error) {
     notice(error.message, true);
   }
@@ -725,5 +828,20 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => {
   for (const turn of turns.values()) void persist(turn.key);
 });
+if (embedded) {
+  $("close-panel").hidden = false;
+  $("close-panel").addEventListener("click", () => {
+    window.parent.postMessage({ type: "paper-sidecar-close" }, parentOrigin);
+  });
+}
+// Show the last known models and settings immediately instead of "loading…".
+const { settingsCache } = await chrome.storage.local.get("settingsCache");
+if (settingsCache?.models) {
+  options.initialize(settingsCache);
+  settingsView.initialize(settingsCache);
+}
 connect();
 await refreshContext();
+// The panel reloads on every tab switch; show it only once the right paper is in place.
+renderMessages();
+document.body.classList.remove("booting");

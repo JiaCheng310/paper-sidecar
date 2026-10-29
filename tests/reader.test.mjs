@@ -124,6 +124,7 @@ async function makeReader(
       },
     },
     runtime: {
+      id: extensionId,
       getURL: (path) => `${extensionOrigin}/${path}`,
       onMessage: { addListener() {} },
       sendMessage: async (message) =>
@@ -186,32 +187,110 @@ test("paper pages get only a floating icon; the site's own assistant is untouche
   }
 });
 
-test("the icon opens the side panel for its own tab, on alphaXiv and arXiv", async () => {
+test("the icon opens a wide in-page panel bound to its tab, and only that frame can close it", async () => {
   for (const origin of ["https://www.alphaxiv.org", "https://arxiv.org"]) {
     const app = await makeReader("/abs/1706.03762v7", "docked", origin);
     try {
+      const { window } = app;
       app.launcher().click();
-      await app.settle();
-      assert.equal(JSON.stringify(app.handle.opened), JSON.stringify([{ tabId: 10 }]));
+      const panel = app.root.querySelector(".panel");
+      const frame = panel.querySelector("iframe");
+      assert.equal(panel.hidden, false);
+      assert.equal(app.launcher().hidden, true);
+      const url = new URL(frame.src);
+      assert.equal(url.pathname, "/sidepanel.html");
+      assert.equal(url.searchParams.get("tabId"), "10");
+      assert.equal(url.searchParams.get("parent"), origin);
+      // Wide by default: at least 420px, about 40% of the window.
+      assert.ok(parseInt(panel.style.width) >= 420);
+      // Messages from anything but the panel frame are ignored.
+      window.dispatchEvent(
+        new window.MessageEvent("message", {
+          data: { type: "paper-sidecar-close" },
+          origin,
+          source: window,
+        }),
+      );
+      assert.equal(panel.hidden, false);
+      window.dispatchEvent(
+        new window.MessageEvent("message", {
+          data: { type: "paper-sidecar-close" },
+          origin: extensionOrigin,
+          source: frame.contentWindow,
+        }),
+      );
+      assert.equal(panel.hidden, true);
+      assert.equal(app.launcher().hidden, false);
+      // Reopening keeps the same frame (and conversation); leaving the paper unloads it.
+      app.launcher().click();
+      assert.equal(panel.querySelector("iframe"), frame);
+      await app.navigate("/explore", "Explore");
+      assert.equal(panel.hidden, true);
+      assert.equal(panel.querySelector("iframe"), null);
     } finally {
       app.dom.window.close();
     }
   }
 });
 
-test("the icon sits above the site's own floating button instead of covering it", async () => {
+test("the icon sits above the site's whole button stack, aligned with it", async () => {
   const app = await makeReader();
   try {
     const { window } = app;
     assert.equal(app.launcher().style.bottom, "20px");
-    const button = window.document.createElement("button");
-    button.style.position = "fixed";
-    window.document.body.append(button);
-    const top = window.innerHeight - 76;
-    button.getBoundingClientRect = () => ({ top, bottom: top + 52, width: 52, height: 52 });
-    window.document.elementsFromPoint = () => [app.host, button, window.document.body];
+    const height = window.innerHeight,
+      width = window.innerWidth;
+    const fixedButton = (top, size, left) => {
+      const button = window.document.createElement("button");
+      button.style.position = "fixed";
+      window.document.body.append(button);
+      button.getBoundingClientRect = () => ({
+        top,
+        bottom: top + size,
+        left,
+        right: left + size,
+        width: size,
+        height: size,
+      });
+      return button;
+    };
+    // alphaXiv-like stack: assistant button, info button above it, and an unrelated
+    // floating element much higher up that is not part of the stack.
+    const assistant = fixedButton(height - 76, 52, width - 76);
+    const info = fixedButton(height - 140, 52, width - 76);
+    const unrelated = fixedButton(height - 400, 40, width - 70);
+    window.document.elementsFromPoint = (x, y) =>
+      [assistant, info, unrelated].filter((button) => {
+        const rect = button.getBoundingClientRect();
+        return y >= rect.top && y <= rect.bottom && x >= rect.left && x <= rect.right;
+      });
     window.dispatchEvent(new window.Event("resize"));
-    assert.equal(app.launcher().style.bottom, "88px");
+    assert.equal(app.launcher().style.bottom, "152px");
+    assert.equal(app.launcher().style.right, `${Math.round(width - (width - 50) - 23)}px`);
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+test("an orphaned script removes its icon, and a new script hides stale ones", async () => {
+  const app = await makeReader();
+  try {
+    const { window } = app;
+    // Simulate an extension reload: the old script loses its runtime.
+    const runtime = window.chrome.runtime;
+    window.chrome.runtime = {};
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    assert.equal(window.document.getElementById("paper-sidecar-root"), null);
+    // A leftover icon from an older version is hidden by the next script.
+    const stale = window.document.createElement("div");
+    stale.id = "paper-sidecar-root";
+    window.document.body.append(stale);
+    window.chrome.runtime = runtime;
+    window.eval(contentSource);
+    await app.settle();
+    assert.equal(stale.style.display, "none");
+    assert.notEqual(stale.id, "paper-sidecar-root");
+    assert.ok(window.document.getElementById("paper-sidecar-root"));
   } finally {
     app.dom.window.close();
   }

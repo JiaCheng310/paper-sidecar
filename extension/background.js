@@ -3,15 +3,16 @@ import { createConversationStore } from "./conversation-store.js";
 
 const conversations = createConversationStore(chrome.storage.local);
 const PAPER_SITE = /^https:\/\/(www\.)?(alphaxiv|arxiv)\.org\//;
+const CONTENT_SCRIPTS = ["reader-view.js", "content.js"];
 // The browser's PDF viewer does not run content scripts, so the floating icon cannot
 // appear there; a badge on the toolbar icon points to the side panel instead.
 const PDF_VIEWER = /^https:\/\/(www\.)?arxiv\.org\/pdf\//;
 
-// The side panel belongs to one alphaXiv/arXiv tab. Other sites never show it, and
-// switching tabs never carries a conversation over to a different page.
+// The side panel belongs to one paper tab. Any other page (another site, or a non-paper
+// page such as alphaXiv's home) closes it, and switching tabs never mixes conversations.
 async function configurePanel(tabId, url) {
   try {
-    if (PAPER_SITE.test(url || "")) {
+    if (url && paperIdFromUrl(url)) {
       await chrome.sidePanel.setOptions({
         tabId,
         path: `sidepanel.html?tabId=${tabId}`,
@@ -28,14 +29,25 @@ async function configurePanel(tabId, url) {
   }
 }
 
-async function initialize() {
+async function initialize(reinject = false) {
   await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   await chrome.sidePanel.setOptions({ enabled: false });
   // Without the "tabs" permission, URLs are visible only on the paper sites themselves.
-  for (const tab of await chrome.tabs.query({})) await configurePanel(tab.id, tab.url);
+  for (const tab of await chrome.tabs.query({})) {
+    await configurePanel(tab.id, tab.url);
+    // Reloading the extension orphans the scripts already running in open tabs; replace them
+    // so the page never keeps a stale icon until it is refreshed.
+    if (reinject && PAPER_SITE.test(tab.url || ""))
+      await chrome.scripting
+        .executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS })
+        .catch(() => {});
+  }
 }
 
-chrome.runtime.onInstalled.addListener(() => void initialize());
+// Only a fresh install or a reload of the extension leaves pages without a live script.
+chrome.runtime.onInstalled.addListener(
+  ({ reason }) => void initialize(reason === "install" || reason === "update"),
+);
 chrome.runtime.onStartup.addListener(() => void initialize());
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url || change.status === "loading") void configurePanel(tabId, tab.url);

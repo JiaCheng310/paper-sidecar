@@ -207,3 +207,41 @@ class ConcurrentTurnsTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuotaTest(unittest.IsolatedAsyncioTestCase):
+    async def test_quota_shows_chatgpt_plan_usage_only(self):
+        from host.main import quota_view
+        events = []
+        bridge = Bridge(events.append, settings=ReaderSettings(UserStore(None)))
+        account = {"account": {"type": "chatgpt", "email": None, "planType": "plus"}}
+        limits = {"rateLimits": {
+            "primary": {"usedPercent": 23.4, "windowDurationMins": 300, "resetsAt": 1793260000},
+            "secondary": {"usedPercent": 41, "windowDurationMins": 10080, "resetsAt": None},
+            "rateLimitReachedType": None}}
+
+        class Client:
+            async def start(self):
+                pass
+
+            async def close(self):
+                pass
+
+            async def request(self, method, params):
+                return account if method == "account/read" else limits
+
+        bridge.client = Client()
+        try:
+            await bridge.handle({"type": "quota", "requestId": "q"})
+            self.assertEqual(events[-1]["event"], "quota")
+            self.assertEqual([(w["minutes"], w["usedPercent"]) for w in events[-1]["windows"]],
+                             [(300, 23.4), (10080, 41)])
+            account = {"account": {"type": "apiKey"}}
+            await bridge.handle({"type": "quota", "requestId": "q2"})
+            self.assertEqual(events[-1]["windows"], [])
+            bridge.on_codex_event("account/rateLimits/updated", {"rateLimits": {
+                "primary": {"usedPercent": 99, "windowDurationMins": 300}, "rateLimitReachedType": "rate_limit"}})
+            self.assertEqual(events[-1]["reached"], "rate_limit")
+            self.assertEqual(quota_view(None), {"windows": [], "reached": None})
+        finally:
+            await bridge.close()

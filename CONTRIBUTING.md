@@ -9,7 +9,7 @@
 | `extension/manifest.json` | 扩展入口、权限和资源暴露规则的唯一来源 |
 | `extension/paper-context.js` | 论文编号、版本匹配和 PDF 地址选择 |
 | `extension/content.js` | 当前网页信息、选区、站内导航跟踪 |
-| `extension/reader-view.js` | 论文页右下角打开侧栏的浮动图标（Shadow DOM 隔离），不修改网页 |
+| `extension/reader-view.js` | 论文页右下角的浮动图标和页面右侧的可调宽度面板（Shadow DOM 隔离，内嵌扩展页面），不修改网页内容 |
 | `extension/reader-options.js` | 根据模型目录（Codex 与其他 API）生成分组选项、保存选择 |
 | `extension/settings-view.js` | 设置页：ChatGPT 账号登录、系统提示词编辑、其他模型 API 管理 |
 | `extension/sidepanel.html`、`style.css` | 聊天界面的结构与样式 |

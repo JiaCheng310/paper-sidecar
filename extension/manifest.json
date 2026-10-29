@@ -11,7 +11,7 @@
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx29rZwGg/cuf3HjlUJGgYZW2KhuAdgXYQqGQ7CaDDougXuEzidL7AGnMEty7rUVVCTd9PUif9wFE26KKIdBW+MS3GsiOgx7WX4FCQni+FLbQwHAn14aX/GPftRHHR5HvBFqklile8dejKDMI2skuXUFz6ND8dcRWGMG/ck2SW92OoTxlfrUQb0GPbGMgvOKQejUh6ulpo01D5x3DCbAEkM7RdjlcSsrgW3etQwtT4RxKy1RHkm6igYNeNny9zfNkkVrn/jcYWLJl1ECjot523qZQQrZggnBRyQk0pPyg6gk5lu/qJUoeUja6ywopQ/451U7sz4KwyEX5IzWMU58WjwIDAQAB",
   "minimum_chrome_version": "116",
-  "permissions": ["nativeMessaging", "sidePanel", "storage"],
+  "permissions": ["nativeMessaging", "sidePanel", "storage", "scripting"],
   "host_permissions": [
     "https://alphaxiv.org/*",
     "https://www.alphaxiv.org/*",
@@ -34,7 +34,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/icon.svg"],
+      "resources": ["sidepanel.html", "icons/icon.svg"],
       "matches": [
         "https://alphaxiv.org/*",
         "https://www.alphaxiv.org/*",

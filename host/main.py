@@ -24,6 +24,19 @@ def conversation_key(paper_id):
     return re.sub(r"v\d+$", "", paper_id)
 
 
+def quota_view(snapshot):
+    """The parts of a Codex rate-limit snapshot the panel shows: usage per window."""
+    snapshot = snapshot or {}
+    windows = []
+    for key in ("primary", "secondary"):
+        window = snapshot.get(key)
+        if isinstance(window, dict) and isinstance(window.get("usedPercent"), (int, float)):
+            windows.append({"slot": key, "usedPercent": window["usedPercent"],
+                            "minutes": window.get("windowDurationMins"),
+                            "resetsAt": window.get("resetsAt")})
+    return {"windows": windows, "reached": snapshot.get("rateLimitReachedType")}
+
+
 def emit(message):
     body = json.dumps(message, ensure_ascii=False).encode()
     if len(body) > MAX_MESSAGE:
@@ -116,6 +129,9 @@ class Bridge:
         return {"success": True, "contentItems": items}
 
     def on_codex_event(self, method, params):
+        if method == "account/rateLimits/updated":
+            self.send({"event": "quota", "update": True, **quota_view(params.get("rateLimits"))})
+            return
         if method in {"account/login/completed", "account/updated"}:
             self.send({"event": "account-changed", "method": method, **params})
             if method == "account/updated":
@@ -332,9 +348,22 @@ class Bridge:
             if message.get("type") == "hello":
                 self.send({"event": "ready", "requestId": request_id, "version": "0.1.0",
                            "cache": self.cache.info()})
+                # Start Codex now so the model list and the first answer do not wait for it.
+                self.prewarm = asyncio.create_task(self.client.start())
+                self.prewarm.add_done_callback(lambda task: task.cancelled() or task.exception())
             elif message.get("type") == "settings":
                 self.send({"event": "settings", "requestId": request_id,
                            **await self.settings.describe(self.client)})
+            elif message.get("type") == "quota":
+                await self.client.start()
+                state = await self.client.request("account/read", {"refreshToken": False})
+                # API-key and signed-out accounts have no ChatGPT plan quota to show.
+                if (state.get("account") or {}).get("type") != "chatgpt":
+                    self.send({"event": "quota", "requestId": request_id, "windows": []})
+                else:
+                    limits = await self.client.request("account/rateLimits/read", {})
+                    self.send({"event": "quota", "requestId": request_id,
+                               **quota_view(limits.get("rateLimits"))})
             elif message.get("type") in {"account", "login", "login-cancel", "logout"}:
                 await self.account(message)
             elif message.get("type") in {"save-prompt", "save-provider", "delete-provider"}:

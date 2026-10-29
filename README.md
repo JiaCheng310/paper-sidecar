@@ -14,7 +14,7 @@ A browser extension for [alphaXiv](https://www.alphaxiv.org) and [arXiv](https:/
 
 **Features**
 
-- Opens in the browser side panel from a small icon at the bottom right of alphaXiv and arXiv paper pages
+- A small icon at the bottom right of alphaXiv and arXiv paper pages opens a wide panel on the right; drag its edge to resize
 - Use your ChatGPT account, or APIs like DeepSeek, Kimi, Qwen, OpenRouter, OpenAI, Claude and Ollama
 - Each paper has its own conversation, with history
 - Editable system prompt
@@ -34,7 +34,7 @@ Then in your browser:
 
 1. Open `edge://extensions` or `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and choose the `extension` folder.
-3. Open a paper on alphaXiv or arXiv and click the robot icon at the bottom right. In arXiv's PDF view, click the toolbar icon (marked **AI**).
+3. Open a paper on alphaXiv or arXiv and click the robot icon at the bottom right. In arXiv's PDF view, click the toolbar icon (marked **AI**) to use the browser side panel.
 4. Click **⚙** to sign in to ChatGPT or add an API key.
 
 After updating the code, run `./install.command` again and click **Reload** on the extensions page.
@@ -44,7 +44,8 @@ After updating the code, run `./install.command` again and click **Reload** on t
 - **Enter** to send, **Shift+Enter** for a new line, **Esc** to stop.
 - Select text on the page and click **引用选中内容** (quote selection) to ask about it.
 - **＋** starts a new conversation; the clock button shows earlier ones.
-- Drag the side panel's left edge to make it wider; the browser remembers the width.
+- Drag the panel's left edge to resize it; the width is remembered.
+- With a ChatGPT account, the footer shows your plan usage (hover for reset times).
 
 ### Privacy
 
@@ -64,7 +65,7 @@ PDFs come only from arXiv. Everything stays on your Mac: API keys and settings i
 
 **功能**
 
-- 在 alphaXiv 和 arXiv 论文页右下角点击小图标，在浏览器侧栏中打开
+- 在 alphaXiv 和 arXiv 论文页右下角点击小图标，在页面右侧打开宽面板，拖动边缘可调整宽度
 - 支持 ChatGPT 账号，以及 DeepSeek、Kimi、通义千问、OpenRouter、OpenAI、Claude、Ollama 等 API
 - 每篇论文独立对话，可查看历史
 - 系统提示词可自行修改
@@ -84,7 +85,7 @@ cd paper-sidecar
 
 1. 打开 `edge://extensions` 或 `chrome://extensions`，开启**开发人员模式**。
 2. 点击**加载解压缩的扩展**，选择 `extension` 文件夹。
-3. 在 alphaXiv 或 arXiv 打开一篇论文，点击右下角的机器人图标。在 arXiv 的 PDF 页面，点击工具栏图标（带 **AI** 标记）。
+3. 在 alphaXiv 或 arXiv 打开一篇论文，点击右下角的机器人图标。在 arXiv 的 PDF 页面，点击工具栏图标（带 **AI** 标记）使用浏览器侧栏。
 4. 点击 **⚙**，登录 ChatGPT 或添加 API Key。
 
 更新代码后，重新运行 `./install.command`，并在扩展页点击**重新加载**。
@@ -94,7 +95,8 @@ cd paper-sidecar
 - **Enter** 发送，**Shift+Enter** 换行，**Esc** 停止。
 - 在网页上选中文字，点击**引用选中内容**，可以针对这段提问。
 - **＋** 开始新对话，时钟按钮查看以前的对话。
-- 拖动侧栏左边缘可以加宽，浏览器会记住宽度。
+- 拖动面板左边缘可以调整宽度，会自动记住。
+- 登录 ChatGPT 账号后，底部会显示额度使用情况（悬停查看重置时间）。
 
 ### 隐私
 
@@ -121,13 +123,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the code layout. 代码结构见 CONT
 
 Paper Sidecar is an independent, non-commercial open-source project. It is not affiliated with, endorsed by or sponsored by arXiv or alphaXiv; their names are trademarks of their respective owners and are used only to describe compatibility.
 
-- It only adds a small button to paper pages in **your own browser**. It does not change alphaXiv's or arXiv's pages, and does not call alphaXiv's AI or servers.
+- It only adds a small button and its own panel on top of paper pages in **your own browser**. It does not change alphaXiv's or arXiv's content, and does not call alphaXiv's AI or servers.
 - PDFs are downloaded **only from arXiv**, one at a time with at least 3 seconds between requests, and cached on your Mac for your personal reading. Nothing is redistributed.
 - You are responsible for following the terms of the sites you use, the license of each paper, and the terms of the model provider you choose.
 
 Paper Sidecar 是独立的非商业开源项目，与 arXiv、alphaXiv 没有任何关联，也未获得其认可或赞助；相关名称归各自所有者，仅用于说明兼容性。
 
-- 它只在**你自己浏览器**的论文页上加一个小按钮，不修改 alphaXiv 或 arXiv 的页面，也不调用 alphaXiv 的 AI 或服务器。
+- 它只在**你自己浏览器**的论文页上加一个小按钮和自己的面板，不修改 alphaXiv 或 arXiv 的页面内容，也不调用 alphaXiv 的 AI 或服务器。
 - PDF **只从 arXiv 下载**，每次一个、间隔至少 3 秒，仅缓存在你的 Mac 上供个人阅读，不会再分发。
 - 请自行遵守所用网站的条款、每篇论文的许可，以及你所选模型服务商的条款。
 

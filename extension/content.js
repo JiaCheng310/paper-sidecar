@@ -1,5 +1,10 @@
 (() => {
-  if (document.getElementById(PaperSidecarReader.rootId)) return;
+  // A script left behind by a reloaded extension may still own an icon; hide it for good.
+  // (Removing it would only make the orphaned script append it again.)
+  for (const stale of document.querySelectorAll(`#${PaperSidecarReader.rootId}`)) {
+    stale.style.setProperty("display", "none", "important");
+    stale.id = `${PaperSidecarReader.rootId}-stale`;
+  }
   const reader = PaperSidecarReader.create();
   let lastSelection = "";
   let lastUrl = location.href;
@@ -45,6 +50,12 @@
   }
 
   function trackNavigation() {
+    // After the extension is reloaded this script is orphaned: remove its icon and stop.
+    if (!chrome.runtime?.id) {
+      clearInterval(timer);
+      reader.destroy();
+      return;
+    }
     reader.mount();
     if (lastUrl === location.href) return;
     lastSelection = "";
@@ -65,6 +76,6 @@
   window.addEventListener("popstate", trackNavigation);
   window.addEventListener("hashchange", trackNavigation);
   // pushState navigation does not emit popstate. Poll only the URL, not the page DOM.
-  setInterval(trackNavigation, 1000);
+  const timer = setInterval(trackNavigation, 1000);
   refreshAfterNavigation();
 })();
