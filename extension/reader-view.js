@@ -34,22 +34,8 @@ globalThis.PaperSidecarReader = (() => {
           box-shadow: 0 6px 20px #00000033;
           cursor: pointer;
           transition:
-            bottom 220ms ease,
-            right 220ms ease,
             transform 160ms ease,
             box-shadow 160ms ease;
-        }
-        .launcher.settling {
-          opacity: 0;
-          pointer-events: none;
-        }
-        .launcher:not(.settling) {
-          animation: appear 200ms ease;
-        }
-        @keyframes appear {
-          from {
-            opacity: 0;
-          }
         }
         .launcher:hover {
           transform: translateY(-2px);
@@ -242,7 +228,6 @@ globalThis.PaperSidecarReader = (() => {
       panel.hidden = true;
       pushPage(0);
       launcher.hidden = !paper;
-      if (paper) place();
     }
 
     // Leaving the paper unloads the frame so its local assistant process is released.
@@ -265,111 +250,30 @@ globalThis.PaperSidecarReader = (() => {
       if (event.key === "Escape" && !panel.hidden) close();
     });
 
-    function pinnedAncestor(element) {
-      for (let node = element, depth = 0; node && depth < 6; node = node.parentElement, depth++) {
-        const position = getComputedStyle(node).position;
-        if (position === "fixed" || position === "sticky") return node;
-      }
-      return null;
-    }
-
-    // Floating buttons the site keeps in the bottom-right corner, e.g. alphaXiv's
-    // stack of round buttons. Found at runtime so layout changes are handled.
-    function cornerButtons() {
-      const width = window.innerWidth,
-        height = window.innerHeight;
-      const found = new Set();
-      for (const x of [width - 30, width - 46, width - 62])
-        for (let y = height - 16; y > height - 520; y -= 12)
-          for (const element of document.elementsFromPoint?.(x, y) || []) {
-            if (
-              element === host ||
-              element === document.body ||
-              element === document.documentElement
-            )
-              continue;
-            const rect = element.getBoundingClientRect();
-            if (rect.width <= 120 && rect.height <= 120 && pinnedAncestor(element))
-              found.add(element);
-          }
-      return [...found].map((element) => element.getBoundingClientRect());
-    }
-
-    // Sit above the whole stack (never between its buttons), centred on its column.
-    function target() {
-      const rects = cornerButtons().sort((a, b) => b.bottom - a.bottom);
-      if (!rects.length) return { bottom: 20, right: 20 };
-      let top = rects[0].top;
-      let left = rects[0].left,
-        right = rects[0].right;
-      for (const rect of rects.slice(1)) {
-        if (rect.bottom < top - 40) break; // A gap: the rest is not part of this stack.
-        top = Math.min(top, rect.top);
-        left = Math.min(left, rect.left);
-        right = Math.max(right, rect.right);
-      }
-      const centre = (left + right) / 2;
-      return {
-        bottom: Math.round(window.innerHeight - top + 12),
-        right: Math.max(8, Math.round(window.innerWidth - centre - 23)),
-      };
-    }
-
-    // The icon is placed once the page has settled, then only ever moves up (when the site
-    // adds buttons to its corner stack), after two identical readings. It never chases
-    // buttons that appear and disappear while scrolling.
-    let placed = null,
-      candidate = null,
-      checkedAt = 0,
-      settleTimer = 0;
-    function apply(next) {
-      placed = next;
-      candidate = null;
-      launcher.style.bottom = `${next.bottom}px`;
-      launcher.style.right = `${next.right}px`;
-      error.style.bottom = `${next.bottom + 4}px`;
-      error.style.right = `${next.right + 56}px`;
-    }
-    function place(force = false) {
-      // mount() also runs on every selection change; probing that often is wasted work.
-      if (!force && performance.now() - checkedAt < 500) return;
-      checkedAt = performance.now();
-      const next = target();
-      if (force || !placed) return apply(next);
-      if (next.bottom <= placed.bottom + 3) return (candidate = null);
-      if (candidate && Math.abs(candidate.bottom - next.bottom) < 4) apply(next);
-      else candidate = next;
-    }
-    function settle() {
-      launcher.classList.add("settling");
-      clearTimeout(settleTimer);
-      settleTimer = setTimeout(() => {
-        place(true);
-        launcher.classList.remove("settling");
-      }, 900);
-    }
+    // A fixed spot that never moves. alphaXiv keeps up to three round buttons (52px, 20px
+    // from the edges) in its bottom-right corner, so the icon sits above that column,
+    // centred on it; arXiv has none, so the icon uses the corner itself.
+    const POSITION = /(^|\.)alphaxiv\.org$/.test(location.hostname)
+      ? { bottom: 222, right: 23 }
+      : { bottom: 24, right: 24 };
+    launcher.style.bottom = `${POSITION.bottom}px`;
+    launcher.style.right = `${POSITION.right}px`;
+    error.style.bottom = `${POSITION.bottom + 4}px`;
+    error.style.right = `${POSITION.right + 56}px`;
 
     function mount() {
       if (!host.isConnected) (document.body || document.documentElement).append(host);
-      if (!launcher.hidden) place();
     }
 
     function setPaper(next) {
-      // Read this first: closing the panel below un-hides the icon.
-      const wasHidden = launcher.hidden;
       const changedTab = paper?.tabId !== next?.tabId;
       paper = next;
       if (!paper || changedTab) unload();
       if (!panel.hidden) return;
       launcher.hidden = !paper;
-      if (paper && wasHidden) {
-        place(true);
-        settle();
-      }
     }
 
     window.addEventListener("resize", () => {
-      if (!launcher.hidden) place(true);
       if (!panel.hidden) applyWidth();
     });
 
