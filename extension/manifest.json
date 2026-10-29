@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "Paper Sidecar · 论文伴读",
+  "version": "0.1.0",
+  "description": "在 alphaXiv / arXiv 论文页旁与 AI 一起读论文：支持 ChatGPT 账号及 DeepSeek、Claude 等 API，直接读取 PDF 原文。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx29rZwGg/cuf3HjlUJGgYZW2KhuAdgXYQqGQ7CaDDougXuEzidL7AGnMEty7rUVVCTd9PUif9wFE26KKIdBW+MS3GsiOgx7WX4FCQni+FLbQwHAn14aX/GPftRHHR5HvBFqklile8dejKDMI2skuXUFz6ND8dcRWGMG/ck2SW92OoTxlfrUQb0GPbGMgvOKQejUh6ulpo01D5x3DCbAEkM7RdjlcSsrgW3etQwtT4RxKy1RHkm6igYNeNny9zfNkkVrn/jcYWLJl1ECjot523qZQQrZggnBRyQk0pPyg6gk5lu/qJUoeUja6ywopQ/451U7sz4KwyEX5IzWMU58WjwIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": ["nativeMessaging", "sidePanel", "storage"],
+  "host_permissions": [
+    "https://alphaxiv.org/*",
+    "https://www.alphaxiv.org/*",
+    "https://arxiv.org/*",
+    "https://www.arxiv.org/*",
+    "https://pdfs.assets.alphaxiv.org/*"
+  ],
+  "action": {
+    "default_title": "打开论文伴读",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["sidepanel.html", "icons/icon.svg"],
+      "matches": [
+        "https://alphaxiv.org/*",
+        "https://www.alphaxiv.org/*",
+        "https://arxiv.org/*",
+        "https://www.arxiv.org/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://alphaxiv.org/*",
+        "https://www.alphaxiv.org/*",
+        "https://arxiv.org/*",
+        "https://www.arxiv.org/*"
+      ],
+      "js": ["alphaxiv-workspace.js", "reader-view.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

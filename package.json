@@ -1,0 +1,22 @@
+{
+  "name": "paper-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "format": "prettier --write \"extension/**/*.{js,html,css,json}\" \"tests/*.mjs\" package.json .prettierrc.json",
+    "format:check": "prettier --check \"extension/**/*.{js,html,css,json}\" \"tests/*.mjs\" package.json .prettierrc.json",
+    "check": "npm run format:check && npm test"
+  },
+  "dependencies": {
+    "@openai/codex": "0.165.0",
+    "dompurify": "^3.3.0",
+    "katex": "^0.16.22",
+    "marked": "^17.0.0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "prettier": "3.9.10"
+  }
+}

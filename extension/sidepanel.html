@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>论文伴读 · Paper Sidecar</title>
+    <link rel="stylesheet" href="vendor/katex.min.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar standalone-only">
+      <div class="brand"><img class="mark" src="icons/icon.svg" alt="" /><span>论文伴读</span></div>
+    </header>
+    <section class="paper-card standalone-only">
+      <div class="eyebrow">CURRENT PAPER <span id="paper-id"></span></div>
+      <h1 id="paper-title">打开一篇论文</h1>
+      <div class="paper-meta">
+        <span id="paper-status">随当前 alphaXiv 页面切换</span
+        ><a id="pdf-link" target="_blank" rel="noreferrer" hidden>PDF ↗</a>
+      </div>
+    </section>
+    <div class="tabs standalone-only">
+      <span class="tab active">对话</span><span class="model" id="model">Paper Sidecar</span>
+    </div>
+    <main id="conversation" aria-live="polite">
+      <section id="welcome">
+        <h2>理解、质疑，或延伸这篇论文</h2>
+        <p>沿用你的论文阅读流程，从原文和证据出发。</p>
+        <div class="suggestions">
+          <button
+            data-prompt="请按照我的论文阅读流程，深入阅读并解释这篇论文。先读 PDF 原文，必要时检索相关研究。"
+          >
+            梳理问题与核心方法 <span>↗</span>
+          </button>
+          <button
+            data-prompt="从直觉到公式，逐步教我理解这篇论文最难的方法部分。请结合具体例子和 PDF 页码解释。"
+          >
+            从直觉理解关键公式 <span>↗</span>
+          </button>
+          <button
+            data-prompt="请检查实验部分和相关表格：哪些证据支持主要结论？最脆弱的假设是什么？"
+          >
+            核对实验与关键假设 <span>↗</span>
+          </button>
+          <button
+            data-prompt="请结合原文并搜索后续研究，说明这个方向有哪些扩展或反驳，并提出值得验证的问题。"
+          >
+            寻找后续研究与新问题 <span>↗</span>
+          </button>
+        </div>
+      </section>
+      <div id="messages"></div>
+      <button type="button" id="jump-latest" class="jump-latest" hidden>↓ 回到最新</button>
+    </main>
+    <div id="notice" role="status" hidden></div>
+    <footer>
+      <div id="selection" hidden>
+        <div>
+          <span>引用选中文本</span
+          ><button id="clear-selection" class="icon-button" title="移除引用">×</button>
+        </div>
+        <p></p>
+      </div>
+      <form id="composer">
+        <textarea
+          id="question"
+          rows="2"
+          placeholder="问问这篇论文，或选中一段原文来讨论…"
+          aria-label="问题"
+        ></textarea>
+        <div class="composer-actions">
+          <button type="button" id="quote" class="text-button">❝ 引用选中内容</button>
+          <span class="header-actions">
+            <button
+              type="button"
+              id="open-settings"
+              class="icon-button"
+              title="设置：账号、系统提示词、模型 API"
+              aria-label="设置"
+            >
+              ⚙&#xFE0E;
+            </button>
+            <button
+              type="button"
+              id="reset"
+              class="icon-button"
+              title="开始新的对话，旧对话保留在归档"
+              aria-label="新对话"
+            >
+              ＋
+            </button>
+            <button
+              type="button"
+              id="collapse-panel"
+              class="icon-button"
+              title="收起助手"
+              aria-label="收起助手"
+              hidden
+            >
+              ›
+            </button>
+            <button id="send" type="submit" title="发送（Enter）" aria-label="发送">↑</button>
+            <button id="stop" type="button" title="停止生成（Esc）" aria-label="停止" hidden>
+              <span class="stop-icon"></span>
+            </button>
+          </span>
+        </div>
+        <div class="options-bar" aria-label="模型设置">
+          <label
+            ><span class="sr-only">模型</span
+            ><select id="model-choice" aria-label="模型" disabled>
+              <option>正在读取模型…</option>
+            </select></label
+          >
+          <label
+            ><span class="sr-only">推理强度</span
+            ><select id="effort-choice" aria-label="推理强度" disabled>
+              <option>medium</option>
+            </select></label
+          >
+          <label
+            ><span class="sr-only">速度</span
+            ><select id="speed-choice" aria-label="速度" disabled>
+              <option>Fast</option>
+            </select></label
+          >
+        </div>
+      </form>
+      <div class="footnote">
+        <span id="connection">正在连接本机…</span
+        ><span class="cache-controls"
+          ><span id="cache-size">论文缓存</span
+          ><button type="button" id="clear-cache" class="text-button" disabled>
+            清理缓存
+          </button></span
+        >
+      </div>
+    </footer>
+    <section id="settings-view" role="dialog" aria-label="设置" hidden>
+      <header class="settings-header">
+        <h2>设置</h2>
+        <button type="button" id="close-settings" class="icon-button" aria-label="关闭设置">
+          ×
+        </button>
+      </header>
+      <div id="settings-notice" role="status" hidden></div>
+      <section class="settings-section">
+        <h3>ChatGPT 账号</h3>
+        <p class="account-line"><span id="account-status">正在读取…</span></p>
+        <p id="codex-error" class="hint error-text" hidden></p>
+        <div id="login-actions" class="button-row">
+          <button type="button" id="login-chatgpt" class="primary-button">用 ChatGPT 登录</button>
+          <button type="button" id="login-device" class="secondary-button">设备码登录</button>
+        </div>
+        <div id="login-pending" class="login-pending" hidden>
+          <p id="login-pending-text"></p>
+          <code id="login-code" hidden></code>
+          <button type="button" id="login-cancel" class="text-button">取消登录</button>
+        </div>
+        <details class="key-login">
+          <summary>改用 OpenAI API Key 登录</summary>
+          <form id="login-key-form" class="inline-form">
+            <input
+              id="login-key"
+              type="password"
+              autocomplete="off"
+              placeholder="sk-…"
+              aria-label="OpenAI API Key"
+            />
+            <button type="submit" class="secondary-button">登录</button>
+          </form>
+        </details>
+        <button type="button" id="logout" class="text-button danger" hidden>退出登录</button>
+        <p class="hint">此登录只保存在本扩展的独立目录中，不影响电脑上其他工具的登录。</p>
+        <button type="button" id="refresh-settings" class="text-button">刷新模型列表</button>
+      </section>
+      <section class="settings-section">
+        <h3>系统提示词</h3>
+        <p id="prompt-source" class="hint"></p>
+        <textarea
+          id="prompt-editor"
+          rows="12"
+          spellcheck="false"
+          aria-label="系统提示词"
+        ></textarea>
+        <div class="button-row">
+          <button type="button" id="prompt-save" class="primary-button">保存</button>
+          <button type="button" id="prompt-reset" class="secondary-button">恢复默认</button>
+          <span id="prompt-saved" class="hint"></span>
+        </div>
+        <p class="hint">保存后从下一条消息开始生效，对所有模型都适用。</p>
+      </section>
+      <section class="settings-section">
+        <h3>其他模型 API</h3>
+        <p class="hint">
+          支持 OpenAI 兼容接口（DeepSeek、Kimi、通义千问、OpenRouter、Ollama 等）和 Anthropic
+          Claude。可以使用 PDF 读取工具，但不支持联网搜索。API Key 只保存在本机。
+        </p>
+        <ul id="provider-list"></ul>
+        <p id="provider-empty" class="hint">还没有添加 API。</p>
+        <button type="button" id="provider-add" class="secondary-button">＋ 添加 API</button>
+        <form id="provider-form" class="provider-form" hidden>
+          <h4 id="provider-form-title">添加 API</h4>
+          <label>预设<select id="provider-preset"></select></label>
+          <label>名称<input id="provider-name" required maxlength="60" /></label>
+          <label
+            >接口类型<select id="provider-kind">
+              <option value="openai">OpenAI 兼容（Chat Completions）</option>
+              <option value="anthropic">Anthropic Messages</option>
+            </select></label
+          >
+          <label>Base URL<input id="provider-url" required placeholder="https://…" /></label>
+          <label
+            >API Key<input id="provider-key" type="password" autocomplete="off" placeholder="sk-…"
+          /></label>
+          <label
+            >模型（每行一个）<textarea
+              id="provider-models"
+              rows="4"
+              placeholder="例如 deepseek-chat"
+            ></textarea>
+          </label>
+          <button type="button" id="provider-fetch" class="text-button">获取模型列表</button>
+          <label class="checkbox"
+            ><input id="provider-vision" type="checkbox" />模型支持图片输入（可查看 PDF
+            页图）</label
+          >
+          <div class="button-row">
+            <button type="submit" class="primary-button">保存</button>
+            <button type="button" id="provider-cancel" class="secondary-button">取消</button>
+          </div>
+        </form>
+      </section>
+    </section>
+    <script src="vendor/marked.umd.js"></script>
+    <script src="vendor/purify.min.js"></script>
+    <script src="vendor/katex.min.js"></script>
+    <script src="vendor/auto-render.min.js"></script>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

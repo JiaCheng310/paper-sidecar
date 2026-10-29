@@ -1,0 +1,7 @@
+.venv/
+node_modules/
+__pycache__/
+.DS_Store
+installation.json
+host-launcher
+extension/vendor/
