@@ -104,6 +104,51 @@ globalThis.PaperSidecarReader = (() => {
             background: #1e1e1e;
           }
         }
+        .ask {
+          position: fixed;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          height: 28px;
+          padding: 0 10px 0 6px;
+          border: 0;
+          border-radius: 8px;
+          background: #fff;
+          color: #1d1d1f;
+          box-shadow:
+            0 0 0 0.5px rgb(0 0 0 / 0.12),
+            0 6px 20px rgb(0 0 0 / 0.16);
+          font:
+            500 12.5px -apple-system,
+            BlinkMacSystemFont,
+            "PingFang SC",
+            sans-serif;
+          cursor: pointer;
+          animation: appear 120ms ease;
+        }
+        .ask img {
+          width: 18px;
+          height: 18px;
+          border-radius: 5px;
+        }
+        .ask:hover {
+          background: #f5f5f7;
+        }
+        @keyframes appear {
+          from {
+            opacity: 0;
+            transform: translateY(-3px);
+          }
+        }
+        @media (prefers-color-scheme: dark) {
+          .ask {
+            background: #2a2a2c;
+            color: #f5f5f7;
+          }
+          .ask:hover {
+            background: #323234;
+          }
+        }
         .error {
           position: fixed;
           right: 76px;
@@ -133,6 +178,7 @@ globalThis.PaperSidecarReader = (() => {
       <aside class="panel" aria-label="Paper Sidecar" hidden>
         <div class="resize" title="拖动调整宽度"></div>
       </aside>
+      <button type="button" class="ask" hidden><img alt="" />问 Sidecar</button>
       <div class="error" role="status" hidden></div>`;
     const launcher = shadow.querySelector(".launcher");
     const error = shadow.querySelector(".error");
@@ -140,6 +186,17 @@ globalThis.PaperSidecarReader = (() => {
     const extensionOrigin = chrome.runtime.getURL("").replace(/\/$/, "");
     let paper = null;
     let frame = null;
+    // Quotes wait until the panel has loaded and said it is ready.
+    let frameReady = false;
+    let pendingQuote = null;
+    const ask = shadow.querySelector(".ask");
+    ask.querySelector("img").src = chrome.runtime.getURL("icons/icon.svg");
+    let askText = "";
+    ask.addEventListener("mousedown", (event) => event.preventDefault()); // Keep the selection.
+    ask.addEventListener("click", () => {
+      quote(askText);
+      hideAsk();
+    });
     launcher.querySelector("img").src = chrome.runtime.getURL("icons/icon.svg");
     launcher.addEventListener("click", () => {
       error.hidden = true;
@@ -216,6 +273,7 @@ globalThis.PaperSidecarReader = (() => {
           parent: location.origin,
         });
         frame.src = `${chrome.runtime.getURL("sidepanel.html")}?${params}`;
+        frameReady = false;
         panel.append(frame);
       }
       panel.hidden = false;
@@ -233,18 +291,53 @@ globalThis.PaperSidecarReader = (() => {
     // Leaving the paper unloads the frame so its local assistant process is released.
     function unload() {
       close();
+      hideAsk();
       frame?.remove();
       frame = null;
+      frameReady = false;
+      pendingQuote = null;
+    }
+
+    function deliverQuote() {
+      if (!frameReady || !pendingQuote || !frame) return;
+      frame.contentWindow.postMessage(
+        { type: "paper-sidecar-quote", text: pendingQuote },
+        extensionOrigin,
+      );
+      pendingQuote = null;
+    }
+
+    function quote(text) {
+      if (!paper || !text) return;
+      pendingQuote = text.slice(0, 16000);
+      open();
+      deliverQuote();
+    }
+
+    // "Ask" bubble under a text selection on the paper page.
+    function showAsk(rect, text) {
+      if (!paper || !text) return hideAsk();
+      askText = text;
+      ask.hidden = false;
+      const width = ask.offsetWidth || 104;
+      ask.style.left = `${Math.round(Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8))}px`;
+      const below = rect.bottom + 8;
+      ask.style.top = `${Math.round(below + 36 < window.innerHeight ? below : Math.max(8, rect.top - 36))}px`;
+    }
+
+    function hideAsk() {
+      ask.hidden = true;
+      askText = "";
     }
 
     window.addEventListener("message", (event) => {
-      if (
-        frame &&
-        event.source === frame.contentWindow &&
-        event.origin === extensionOrigin &&
-        event.data?.type === "paper-sidecar-close"
-      )
-        close();
+      if (!frame || event.source !== frame.contentWindow || event.origin !== extensionOrigin)
+        return;
+      if (event.data?.type === "paper-sidecar-close") close();
+      if (event.data?.type === "paper-sidecar-ready") {
+        frameReady = true;
+        deliverQuote();
+      }
     });
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !panel.hidden) close();
@@ -288,7 +381,7 @@ globalThis.PaperSidecarReader = (() => {
     }
 
     mount();
-    return { mount, setPaper, showError, destroy };
+    return { mount, setPaper, showError, destroy, showAsk, hideAsk, host };
   }
 
   return { rootId, create };

@@ -363,7 +363,8 @@ function streamStep() {
   if (!turn) return;
   const full = turn.answer.text;
   const backlog = full.length - turn.shown;
-  if (backlog > 0) turn.shown += Math.max(3, Math.ceil(backlog / 8));
+  // Never lag behind the model: at least 8 characters a frame, and a backlog clears in ~3 frames.
+  if (backlog > 0) turn.shown += Math.max(8, Math.ceil(backlog / 3));
   const node = $("messages").lastElementChild;
   if (!node?.classList.contains("streaming")) return renderMessages();
   if (!full) return;
@@ -829,6 +830,20 @@ window.addEventListener("pagehide", () => {
   for (const turn of turns.values()) void persist(turn.key);
 });
 if (embedded) {
+  // Text selected on the paper page arrives here as a quote for the next question.
+  window.addEventListener("message", (event) => {
+    if (
+      event.source !== window.parent ||
+      event.origin !== parentOrigin ||
+      event.data?.type !== "paper-sidecar-quote" ||
+      typeof event.data.text !== "string"
+    )
+      return;
+    selectedText = event.data.text.slice(0, 16000);
+    showSelection();
+    notice();
+    $("question").focus();
+  });
   $("close-panel").hidden = false;
   $("close-panel").addEventListener("click", () => {
     window.parent.postMessage({ type: "paper-sidecar-close" }, parentOrigin);
@@ -845,3 +860,4 @@ await refreshContext();
 // The panel reloads on every tab switch; show it only once the right paper is in place.
 renderMessages();
 document.body.classList.remove("booting");
+if (embedded) window.parent.postMessage({ type: "paper-sidecar-ready" }, parentOrigin);

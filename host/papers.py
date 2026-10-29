@@ -152,9 +152,10 @@ class Paper:
                 "hasTextLayer": len(sample.strip()) > 40,
                 "storage": self.storage, "outline": self.document.get_toc()[:60]}
 
-    def read_pages(self, start_page=1, count=4, offset=0, max_chars=16000):
-        if not 1 <= start_page <= len(self.document) or not 1 <= count <= 8:
-            raise ValueError("页码超出范围；每次可读取 1–8 页。")
+    def read_pages(self, start_page=1, count=6, offset=0, max_chars=24000):
+        # Larger reads mean fewer tool round trips before the model can answer.
+        if not 1 <= start_page <= len(self.document) or not 1 <= count <= 12:
+            raise ValueError("页码超出范围；每次可读取 1–12 页。")
         if offset < 0 or not 100 <= max_chars <= 24000:
             raise ValueError("读取偏移或字数上限不合法。")
         remaining, pages, next_cursor = max_chars, [], None

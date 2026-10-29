@@ -325,3 +325,59 @@ test("only the extension chat page can save conversations through the background
   assert.equal(response.ok, true);
   assert.equal(response.revision, 1);
 });
+
+test("selecting text shows an Ask bubble that opens the panel with the quote", async () => {
+  const app = await makeReader();
+  try {
+    const { window } = app;
+    const document = window.document;
+    const ask = app.root.querySelector(".ask");
+    // Select a phrase in the paper text.
+    const heading = document.querySelector("h1");
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    range.getClientRects = () => [{ top: 100, bottom: 120, left: 200, right: 400 }];
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    await app.settle();
+    assert.equal(ask.hidden, false);
+    assert.equal(ask.style.top, "128px");
+    // Typing in the site's own text box never offers the bubble.
+    const draft = document.querySelector("textarea");
+    window.getSelection().removeAllRanges();
+    const inField = document.createRange();
+    inField.selectNodeContents(draft);
+    window.getSelection().addRange(inField);
+    document.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    await app.settle();
+    assert.equal(ask.hidden, true);
+    // Ask about the heading: the panel opens and the quote waits for the panel to be ready.
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    await app.settle();
+    ask.click();
+    const panel = app.root.querySelector(".panel");
+    const frame = panel.querySelector("iframe");
+    assert.equal(panel.hidden, false);
+    assert.equal(ask.hidden, true);
+    const delivered = [];
+    // jsdom gives frames inside a shadow root no window; stand one in.
+    const frameWindow = { postMessage: (message, origin) => delivered.push({ message, origin }) };
+    Object.defineProperty(frame, "contentWindow", { value: frameWindow });
+    window.dispatchEvent(
+      new window.MessageEvent("message", {
+        data: { type: "paper-sidecar-ready" },
+        origin: extensionOrigin,
+        source: frameWindow,
+      }),
+    );
+    assert.equal(delivered.length, 1);
+    assert.equal(delivered[0].message.type, "paper-sidecar-quote");
+    assert.equal(delivered[0].message.text, "Paper A");
+    assert.equal(delivered[0].origin, extensionOrigin);
+  } finally {
+    app.dom.window.close();
+  }
+});

@@ -245,3 +245,26 @@ class QuotaTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(quota_view(None), {"windows": [], "reached": None})
         finally:
             await bridge.close()
+
+
+class OpeningPagesTest(unittest.TestCase):
+    def test_first_turn_includes_the_opening_pages(self):
+        from host.main import opening_pages
+
+        class Paper:
+            def read_pages(self, start_page, count, max_chars):
+                self.args = (start_page, count, max_chars)
+                return {"pages": [{"page": 1, "text": "Abstract text"}, {"page": 2, "text": "  "}],
+                        "next_cursor": {"start_page": 3, "offset": 0}}
+
+        paper = Paper()
+        text = opening_pages(paper)
+        self.assertEqual(paper.args, (1, 3, 8000))
+        self.assertIn("[PDF page 1]\nAbstract text", text)
+        self.assertNotIn("[PDF page 2]", text)
+        self.assertIn('"start_page": 3', text)
+
+        class Broken:
+            def read_pages(self, *args, **kwargs):
+                raise ValueError("no text")
+        self.assertEqual(opening_pages(Broken()), "")

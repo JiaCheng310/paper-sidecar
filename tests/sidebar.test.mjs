@@ -18,10 +18,13 @@ function browserEvent() {
   };
 }
 
-async function makeSidebar({ bound = false } = {}) {
+async function makeSidebar({ bound = false, parent = null } = {}) {
   const html = await readFile(new URL("../extension/sidepanel.html", import.meta.url), "utf8");
   // The real side panel is opened per tab as sidepanel.html?tabId=<id> (see background.js).
-  const suffix = bound ? "?tabId=10" : "";
+  const params = new URLSearchParams();
+  if (bound) params.set("tabId", "10");
+  if (parent) (params.set("embedded", "1"), params.set("parent", parent));
+  const suffix = params.size ? `?${params}` : "";
   const dom = new JSDOM(html, {
     runScripts: "outside-only",
     url: `https://test.invalid/sidepanel.html${suffix}`,
@@ -666,6 +669,29 @@ test("the footer shows ChatGPT plan usage, and the in-page panel can ask to clos
     app.messages.emit({ event: "quota", windows: [], reached: "rate_limit" });
     assert.equal(doc.getElementById("quota").textContent, "额度已用完");
     assert.equal(doc.getElementById("close-panel").hidden, true);
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+test("the in-page panel takes quotes only from its own paper page", async () => {
+  const app = await makeSidebar({ bound: true, parent: "https://www.alphaxiv.org" });
+  try {
+    const { window } = app;
+    const doc = window.document;
+    const quote = (origin, text) =>
+      window.dispatchEvent(
+        new window.MessageEvent("message", {
+          data: { type: "paper-sidecar-quote", text },
+          origin,
+          source: window.parent,
+        }),
+      );
+    quote("https://evil.example", "Injected");
+    assert.equal(doc.getElementById("selection").hidden, true);
+    quote("https://www.alphaxiv.org", "Selected sentence from the paper");
+    assert.equal(doc.getElementById("selection").hidden, false);
+    assert.match(doc.getElementById("selection").textContent, /Selected sentence/);
   } finally {
     app.dom.window.close();
   }

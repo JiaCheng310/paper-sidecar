@@ -19,7 +19,8 @@ to request the rest. Do not silently replace that workflow with a brief abstract
 If the user explicitly requests a quick summary, a length limit, a specific section, or asks a
 focused follow-up about one concept, respect that scope instead of repeating the full workflow.
 Use the local PDF tools for claims about the current paper, not the website's AI summary.
-Use read_paper_pages/search_paper before making claims about the paper, and cite PDF page numbers.
+The first message already contains the opening pages; read further with read_paper_pages
+(up to 12 pages per call) or search_paper before making claims, and cite PDF page numbers.
 Use view_paper_page for equations, figures, tables, ambiguous extracted text, and image-only pages.
 The PDF tools read the actual document from memory. A loaded PDF does NOT mean all pages were read.
 Use pagination when necessary; do not equate an abstract or a few pages with the complete paper.
@@ -41,7 +42,7 @@ def paper_tools():
     return [
         tool("read_paper_pages", "Read current PDF text with exact PDF page numbers. Follow next_cursor for more; no disk copy.",
              {"start_page": {"type": "integer", "minimum": 1},
-              "count": {"type": "integer", "minimum": 1, "maximum": 8},
+              "count": {"type": "integer", "minimum": 1, "maximum": 12},
               "offset": {"type": "integer", "minimum": 0}}, ["start_page"]),
         tool("search_paper", "Find relevant pages in the current PDF using keywords. For English papers, translate search concepts to English.",
              {"query": {"type": "string"}}, ["query"]),

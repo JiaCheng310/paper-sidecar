@@ -67,7 +67,32 @@
     trackNavigation();
     const selected = window.getSelection()?.toString().trim();
     if (selected) lastSelection = selected.slice(0, 16000);
+    else reader.hideAsk();
   });
+
+  // Select text in the paper, then ask about it from a small bubble under the selection.
+  function offerAsk() {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+    const node = selection?.anchorNode;
+    const anchor = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    if (
+      !text ||
+      text.length < 2 ||
+      !selection.rangeCount ||
+      anchor?.closest('input, textarea, [contenteditable="true"], [contenteditable=""]') ||
+      reader.host.contains(anchor)
+    )
+      return reader.hideAsk();
+    const rects = selection.getRangeAt(0).getClientRects();
+    const rect = rects[rects.length - 1] || selection.getRangeAt(0).getBoundingClientRect();
+    reader.showAsk(rect, text);
+  }
+  document.addEventListener("mouseup", () => setTimeout(offerAsk, 0));
+  document.addEventListener("keyup", (event) => {
+    if (event.shiftKey) setTimeout(offerAsk, 0);
+  });
+  window.addEventListener("scroll", () => reader.hideAsk(), true);
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message.type !== "paper-context") return;
     trackNavigation();

@@ -42,7 +42,7 @@ After updating the code, run `./install.command` again and click **Reload** on t
 ### Tips
 
 - **Enter** to send, **Shift+Enter** for a new line, **Esc** to stop.
-- Select text on the page and click **引用选中内容** (quote selection) to ask about it.
+- Select text on the paper page and click **问 Sidecar** to ask about it.
 - **＋** starts a new conversation; the clock button shows earlier ones.
 - Drag the panel's left edge to resize it; the width is remembered.
 - With a ChatGPT account, the footer shows your plan usage (hover for reset times).
@@ -93,7 +93,7 @@ cd paper-sidecar
 ### 使用技巧
 
 - **Enter** 发送，**Shift+Enter** 换行，**Esc** 停止。
-- 在网页上选中文字，点击**引用选中内容**，可以针对这段提问。
+- 在论文页上选中文字，点击弹出的**问 Sidecar**，就能针对这段提问。
 - **＋** 开始新对话，时钟按钮查看以前的对话。
 - 拖动面板左边缘可以调整宽度，会自动记住。
 - 登录 ChatGPT 账号后，底部会显示额度使用情况（悬停查看重置时间）。
