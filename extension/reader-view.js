@@ -214,21 +214,32 @@ globalThis.PaperSidecarReader = (() => {
       );
 
     // Narrow the page instead of covering it, and restore the page's own style on close.
-    const root = document.documentElement;
-    let savedMargin = null;
+    // Ordinary pages reflow when the root gets a right margin. The browser's PDF viewer is a
+    // single full-window <embed> that ignores that margin, so it is narrowed directly.
+    const saved = new Map();
+    function setStyle(element, property, value) {
+      if (!saved.has(element)) saved.set(element, new Map());
+      const original = saved.get(element);
+      if (!original.has(property))
+        original.set(property, [
+          element.style.getPropertyValue(property),
+          element.style.getPropertyPriority(property),
+        ]);
+      element.style.setProperty(property, value, "important");
+    }
     function pushPage(pixels) {
       if (pixels) {
-        savedMargin ??= [
-          root.style.getPropertyValue("margin-right"),
-          root.style.getPropertyPriority("margin-right"),
-        ];
-        root.style.setProperty("margin-right", `${pixels}px`, "important");
-      } else if (savedMargin) {
-        const [value, priority] = savedMargin;
-        if (value) root.style.setProperty("margin-right", value, priority);
-        else root.style.removeProperty("margin-right");
-        savedMargin = null;
+        setStyle(document.documentElement, "margin-right", `${pixels}px`);
+        for (const viewer of document.querySelectorAll('embed[type*="pdf"]'))
+          setStyle(viewer, "width", `calc(100% - ${pixels}px)`);
+        return;
       }
+      for (const [element, properties] of saved)
+        for (const [property, [value, priority]] of properties) {
+          if (value) element.style.setProperty(property, value, priority);
+          else element.style.removeProperty(property);
+        }
+      saved.clear();
     }
 
     function applyWidth() {

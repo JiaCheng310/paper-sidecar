@@ -437,3 +437,30 @@ test("the toolbar icon opens the side panel on any paper tab, including arXiv's 
   handle.clickAction({ id: 6, url: "https://en.wikipedia.org/wiki/ArXiv" });
   assert.equal(handle.opened.length, 1);
 });
+
+test("in the browser's PDF viewer the PDF itself is narrowed, and restored on close", async () => {
+  const app = await makeReader();
+  try {
+    const { window } = app;
+    const viewer = window.document.createElement("embed");
+    viewer.setAttribute("type", "application/pdf");
+    viewer.style.width = "100%";
+    window.document.body.append(viewer);
+    app.launcher().click();
+    const width = parseInt(app.root.querySelector(".panel").style.width);
+    assert.equal(viewer.style.width, `calc(100% - ${width}px)`);
+    assert.equal(viewer.style.getPropertyPriority("width"), "important");
+    window.dispatchEvent(
+      new window.MessageEvent("message", {
+        data: { type: "paper-sidecar-close" },
+        origin: extensionOrigin,
+        source: app.root.querySelector("iframe").contentWindow,
+      }),
+    );
+    assert.equal(viewer.style.width, "100%");
+    assert.equal(viewer.style.getPropertyPriority("width"), "");
+    assert.equal(window.document.documentElement.style.marginRight, "");
+  } finally {
+    app.dom.window.close();
+  }
+});
