@@ -316,6 +316,15 @@ main {
     background-position: -150% 0;
   }
 }
+/* Newly streamed words fade in, like a steady hand writing. */
+.fresh {
+  animation: fresh 350ms ease-out both;
+}
+@keyframes fresh {
+  from {
+    opacity: 0;
+  }
+}
 .message-actions {
   display: flex;
   margin-top: 2px;

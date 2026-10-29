@@ -381,8 +381,12 @@ test("streaming updates only the active answer and finished answers can be copie
         itemId: "one",
         text,
       });
-    const frames = () => new Promise((resolve) => setTimeout(resolve, 150));
+    // Text flows out over a few hundred milliseconds (and new words fade in).
+    const frames = () => new Promise((resolve) => setTimeout(resolve, 900));
     delta("First paragraph.\n\nSecond");
+    // While text is flowing out, the newest words are fading in.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.ok(doc.querySelectorAll(".message.streaming .fresh").length > 0);
     await frames();
     const body = doc.querySelector(".message.streaming .body");
     assert.match(body.textContent, /First paragraph\.\s*Second/);
@@ -393,6 +397,8 @@ test("streaming updates only the active answer and finished answers can be copie
     await frames();
     assert.equal(stable.firstElementChild, firstParagraph);
     assert.match(body.querySelector(".stream-tail").textContent, /Second paragraph grows/);
+    // Once everything is shown and faded in, no fading spans are left behind.
+    assert.equal(body.querySelectorAll(".fresh").length, 0);
     assert.equal(doc.querySelector(".message.user"), question);
     app.messages.emit({
       event: "done",

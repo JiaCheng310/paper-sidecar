@@ -314,13 +314,30 @@ function renderMessages() {
   updateControls();
 }
 
-// Streaming stays smooth on long answers:
-// - Text is revealed a few characters per animation frame, faster when there is a backlog,
-//   so bursty model output reads as an even flow and never falls behind.
+// Streaming reads like a steady flow:
+// - Revealing is paced by time, not by how the model's chunks arrive: the backlog drains
+//   with a ~0.2 s time constant (plus a minimum speed), so bursts never show as jumps.
+// - Newly revealed words fade in. The tail paragraph is re-rendered every frame, so each
+//   fading piece keeps its own start time and resumes its animation where it was.
 // - Finished paragraphs are rendered once (Markdown + KaTeX) and cached; each frame only
 //   re-renders the paragraph still being written.
-const requestFrame = (callback) =>
-  window.requestAnimationFrame ? window.requestAnimationFrame(callback) : setTimeout(callback, 16);
+// Next animation frame, or a short timer when the browser pauses frames (background tabs,
+// some hidden panels): the answer keeps moving either way.
+function requestFrame(callback) {
+  let done = false;
+  const run = (now) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    callback(typeof now === "number" ? now : performance.now());
+  };
+  const timer = setTimeout(run, window.requestAnimationFrame ? 100 : 16);
+  window.requestAnimationFrame?.(run);
+  return timer;
+}
+const CATCH_UP_MS = 220;
+const MIN_CHARS_PER_SECOND = 90;
+const FADE_MS = 350;
 let streamFrame = 0;
 
 function stableSplit(text) {
@@ -337,7 +354,53 @@ function stableSplit(text) {
   return 0;
 }
 
-function renderStreamingBody(body, text) {
+// Text nodes of the tail in reading order, leaving rendered formulas alone.
+function textNodes(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) =>
+      node.parentElement?.closest(".katex") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  return nodes;
+}
+
+// Wrap characters that appeared within the last FADE_MS in fading spans.
+function applyFade(tail, state, now) {
+  const nodes = textNodes(tail);
+  const length = nodes.reduce((total, node) => total + node.data.length, 0);
+  if (length > state.length) state.segments.push({ start: state.length, time: now });
+  state.length = length;
+  state.segments = state.segments.filter(
+    (segment) => segment.start < length && now - segment.time < FADE_MS,
+  );
+  if (!state.segments.length) return;
+  let offset = 0;
+  for (const node of nodes) {
+    const begin = offset;
+    const end = (offset += node.data.length);
+    const pieces = [];
+    let cursor = begin;
+    state.segments.forEach((segment, index) => {
+      const from = Math.max(segment.start, begin);
+      const to = Math.min(state.segments[index + 1]?.start ?? length, end);
+      if (from >= to) return;
+      if (from > cursor)
+        pieces.push(document.createTextNode(node.data.slice(cursor - begin, from - begin)));
+      const span = document.createElement("span");
+      span.className = "fresh";
+      span.style.animationDelay = `${-(now - segment.time)}ms`;
+      span.textContent = node.data.slice(from - begin, to - begin);
+      pieces.push(span);
+      cursor = to;
+    });
+    if (!pieces.length) continue;
+    if (cursor < end) pieces.push(document.createTextNode(node.data.slice(cursor - begin)));
+    node.replaceWith(...pieces);
+  }
+}
+
+function renderStreamingBody(body, text, now = performance.now()) {
   let stable = body.querySelector(":scope > .stream-stable");
   let tail = body.querySelector(":scope > .stream-tail");
   if (!stable || !tail) {
@@ -347,32 +410,47 @@ function renderStreamingBody(body, text) {
     tail.className = "stream-tail";
     body.replaceChildren(stable, tail);
     stable.dataset.text = "";
+    body.fade = { length: 0, segments: [] };
   }
   const cut = stableSplit(text);
   const head = text.slice(0, cut);
-  if (stable.dataset.text !== head) {
+  const movedOn = stable.dataset.text !== head;
+  if (movedOn) {
     renderBody(stable, head, false);
     stable.dataset.text = head;
   }
   renderBody(tail, text.slice(cut), false);
+  // A finished paragraph moved into the cached part: the new tail starts fresh.
+  if (movedOn) body.fade = { length: 0, segments: [] };
+  applyFade(tail, body.fade, now);
 }
 
-function streamStep() {
+function streamStep(now = performance.now()) {
   streamFrame = 0;
   const turn = currentTurn();
   if (!turn) return;
   const full = turn.answer.text;
+  const elapsed = Math.min(64, Math.max(1, now - (turn.lastFrame ?? now - 16)));
+  turn.lastFrame = now;
   const backlog = full.length - turn.shown;
-  // Never lag behind the model: at least 8 characters a frame, and a backlog clears in ~3 frames.
-  if (backlog > 0) turn.shown += Math.max(8, Math.ceil(backlog / 3));
+  if (backlog > 0) {
+    const step = Math.max(
+      (MIN_CHARS_PER_SECOND * elapsed) / 1000,
+      backlog * (1 - Math.exp(-elapsed / CATCH_UP_MS)),
+    );
+    turn.exact = Math.min(full.length, (turn.exact ?? turn.shown) + step);
+    turn.shown = Math.max(turn.shown, Math.floor(turn.exact));
+  }
   const node = $("messages").lastElementChild;
   if (!node?.classList.contains("streaming")) return renderMessages();
   if (!full) return;
   const shouldScroll = nearBottom();
-  renderStreamingBody(node.querySelector(".body"), full.slice(0, turn.shown));
+  renderStreamingBody(node.querySelector(".body"), full.slice(0, turn.shown), now);
   if (shouldScroll) scrollToBottom();
   updateJumpButton();
-  if (turn.shown < full.length) scheduleStreamRender();
+  // Keep animating until everything is shown and the last words have faded in.
+  if (turn.shown < full.length || node.querySelector(".body").fade?.segments.length)
+    scheduleStreamRender();
 }
 
 function scheduleStreamRender() {
