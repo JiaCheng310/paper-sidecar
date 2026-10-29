@@ -85,6 +85,25 @@ def pdf_candidates(context):
     return list(dict.fromkeys(candidates))
 
 
+def first_page_title(document):
+    """The largest-font text near the top of page 1, which is the title in almost every paper."""
+    spans = []
+    for block in document[0].get_text("dict")["blocks"]:
+        for line in block.get("lines", []):
+            if abs(line.get("dir", (1, 0))[1]) > 0.01:
+                continue  # Skip rotated text such as arXiv's side stamp.
+            for span in line["spans"]:
+                text = span["text"].strip()
+                if len(text) > 1 and span["bbox"][1] < document[0].rect.height * 0.5:
+                    spans.append((round(span["size"], 1), span["bbox"][1], text))
+    if not spans:
+        return ""
+    largest = max(size for size, _, _ in spans)
+    words = [text for size, _, text in sorted(spans, key=lambda item: item[1]) if size == largest]
+    title = " ".join(words).strip()
+    return title if 8 <= len(title) <= 300 else ""
+
+
 @dataclass
 class Paper:
     paper_id: str
@@ -100,7 +119,9 @@ class Paper:
         if document.needs_pass or not 0 < len(document) <= MAX_PAGES:
             document.close()
             raise ValueError("PDF 加密、没有页面或超过 600 页，无法完整读取。")
-        title = title or document.metadata.get("title") or paper_id
+        # The PDF viewer only knows the arXiv number; read the real title from the PDF.
+        if not title or re.fullmatch(r"\[?[\w./-]*\d{4}\.?\d*(v\d+)?\]?", title.strip()):
+            title = document.metadata.get("title") or first_page_title(document) or paper_id
         return cls(paper_id, url, title[:500], len(body), document)
 
     def metadata(self):

@@ -10,11 +10,12 @@ export async function createReaderOptions(document, storage, onError) {
 
   function fill(select, items, preferred) {
     const groups = new Map();
-    for (const { value, label, description, group } of items) {
+    for (const { value, label, description, group, disabled } of items) {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = label;
       option.title = description || label;
+      option.disabled = !!disabled;
       if (!groups.has(group)) groups.set(group, []);
       groups.get(group).push(option);
     }
@@ -28,9 +29,10 @@ export async function createReaderOptions(document, storage, onError) {
         return [element];
       }),
     );
-    select.value = items.some((item) => item.value === preferred)
+    const usable = items.filter((item) => !item.disabled);
+    select.value = usable.some((item) => item.value === preferred)
       ? preferred
-      : items[0]?.value || "";
+      : usable[0]?.value || "";
   }
 
   function updateCapabilities(preferred) {
@@ -92,10 +94,22 @@ export async function createReaderOptions(document, storage, onError) {
       updateDisabled();
     },
     initialize(message) {
-      catalog = message.models || [];
+      // ChatGPT-account models need a sign-in; API models never do.
+      const signedOut = !!message.account?.requiresOpenaiAuth && !message.account?.account;
+      const items = (message.models || []).map((item) => ({
+        value: item.id,
+        label: signedOut && !item.provider ? `${item.name}（需登录）` : item.name,
+        group: item.group,
+        disabled: signedOut && !item.provider,
+      }));
+      catalog = (message.models || []).filter((item) => !(signedOut && !item.provider));
       if (!catalog.length) {
         ready = false;
-        fill(model, [{ value: "", label: "无可用模型：请在 ⚙ 设置中登录或添加 API" }], "");
+        fill(
+          model,
+          [{ value: "", label: "请在 ⚙ 设置中登录 ChatGPT 或添加 API", disabled: false }, ...items],
+          "",
+        );
         effort.replaceChildren();
         speed.replaceChildren();
         updateDisabled();
@@ -103,13 +117,11 @@ export async function createReaderOptions(document, storage, onError) {
       }
       const preferred = { ...message.defaults, ...saved };
       if (!catalog.some((item) => item.id === preferred.model)) {
-        preferred.model = message.defaults?.model || catalog[0].id;
+        preferred.model = catalog.some((item) => item.id === message.defaults?.model)
+          ? message.defaults.model
+          : catalog[0].id;
       }
-      fill(
-        model,
-        catalog.map((item) => ({ value: item.id, label: item.name, group: item.group })),
-        preferred.model,
-      );
+      fill(model, items, preferred.model);
       ready = true;
       updateCapabilities(preferred);
       document.getElementById("model").textContent = "本机运行";

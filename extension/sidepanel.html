@@ -8,46 +8,42 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <header class="topbar standalone-only">
-      <div class="brand">
-        <img class="mark" src="icons/icon.svg" alt="" /><span>Paper Sidecar</span>
-      </div>
-    </header>
     <section class="paper-card standalone-only">
-      <div class="eyebrow">CURRENT PAPER <span id="paper-id"></span></div>
-      <h1 id="paper-title">打开一篇论文</h1>
-      <div class="paper-meta">
-        <span id="paper-status">随当前 alphaXiv 页面切换</span
-        ><a id="pdf-link" target="_blank" rel="noreferrer" hidden>PDF ↗</a>
+      <img class="mark" src="icons/icon.svg" alt="" />
+      <div class="paper-text">
+        <h1 id="paper-title">打开一篇论文</h1>
+        <div class="paper-meta">
+          <span id="paper-id"></span><span id="paper-status">支持 alphaXiv 与 arXiv 论文页面</span
+          ><a id="pdf-link" target="_blank" rel="noreferrer" hidden>PDF ↗</a>
+        </div>
       </div>
+      <span id="model" hidden>本机运行</span>
     </section>
-    <div class="tabs standalone-only">
-      <span class="tab active">对话</span><span class="model" id="model">本机运行</span>
-    </div>
     <main id="conversation" aria-live="polite">
       <section id="welcome">
-        <h2>理解、质疑，或延伸这篇论文</h2>
-        <p>沿用你的论文阅读流程，从原文和证据出发。</p>
+        <img class="welcome-mark" src="icons/icon.svg" alt="" />
+        <h2>想了解这篇论文的什么？</h2>
+        <p>回答基于 PDF 原文，并标注页码。</p>
         <div class="suggestions">
           <button
-            data-prompt="请按照我的论文阅读流程，深入阅读并解释这篇论文。先读 PDF 原文，必要时检索相关研究。"
+            data-prompt="请深入阅读并解释这篇论文：研究问题、核心方法、关键实验和局限。先读 PDF 原文，必要时检索相关研究。"
           >
-            梳理问题与核心方法 <span>↗</span>
+            <strong>这篇论文做了什么</strong><span>问题、方法、实验与局限</span>
           </button>
           <button
             data-prompt="从直觉到公式，逐步教我理解这篇论文最难的方法部分。请结合具体例子和 PDF 页码解释。"
           >
-            从直觉理解关键公式 <span>↗</span>
+            <strong>讲懂关键公式</strong><span>从直觉到推导</span>
           </button>
           <button
             data-prompt="请检查实验部分和相关表格：哪些证据支持主要结论？最脆弱的假设是什么？"
           >
-            核对实验与关键假设 <span>↗</span>
+            <strong>核对实验证据</strong><span>结论是否站得住</span>
           </button>
           <button
             data-prompt="请结合原文并搜索后续研究，说明这个方向有哪些扩展或反驳，并提出值得验证的问题。"
           >
-            寻找后续研究与新问题 <span>↗</span>
+            <strong>延伸与后续研究</strong><span>相关工作与新问题</span>
           </button>
         </div>
       </section>

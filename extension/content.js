@@ -4,13 +4,18 @@
   let lastSelection = "";
   let lastUrl = location.href;
   let stateRequest = 0;
+  const isArxiv = /(^|\.)arxiv\.org$/.test(location.hostname);
 
   function pageContext() {
+    const citation = document.querySelector('meta[name="citation_title"]')?.content?.trim();
     const heading = document.querySelector("h1")?.textContent?.trim();
+    // arXiv's first <h1> is the subject breadcrumb; alphaXiv navigates client-side, where
+    // the <h1> follows the current paper but the citation meta tag may lag behind.
     const title =
+      (isArxiv ? citation : heading) ||
+      citation ||
       heading ||
-      document.querySelector('meta[name="citation_title"]')?.content ||
-      document.title.replace(/\s*[|–]\s*alphaXiv.*$/i, "");
+      document.title.replace(/\s*[|–]\s*alphaXiv.*$/i, "").replace(/^\[[^\]]+\]\s*/, "");
     const links = [...document.querySelectorAll("a[href]")].map((link) => link.href);
     const citationPdf = document.querySelector('meta[name="citation_pdf_url"]')?.content;
     if (citationPdf) links.unshift(citationPdf);

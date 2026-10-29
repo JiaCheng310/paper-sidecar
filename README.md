@@ -14,7 +14,7 @@ A browser extension for [alphaXiv](https://www.alphaxiv.org) and [arXiv](https:/
 
 **Features**
 
-- Works inside alphaXiv's Assistant panel, or in the browser side panel
+- Works inside alphaXiv's Assistant panel; on arXiv, click the **Sidecar** button at the bottom right
 - Use your ChatGPT account, or APIs like DeepSeek, Kimi, Qwen, OpenRouter, OpenAI, Claude and Ollama
 - Each paper has its own conversation, with history
 - Editable system prompt
@@ -34,7 +34,7 @@ Then in your browser:
 
 1. Open `edge://extensions` or `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and choose the `extension` folder.
-3. Open a paper on alphaXiv, expand the Assistant and pick **Sidecar**, or click the toolbar icon.
+3. Open a paper: on alphaXiv, expand the Assistant and pick **Sidecar**; on arXiv, click the **Sidecar** button at the bottom right.
 4. Click **⚙** to sign in to ChatGPT or add an API key.
 
 After updating the code, run `./install.command` again and click **Reload** on the extensions page.
@@ -63,7 +63,7 @@ Everything stays on your Mac: API keys and settings in `~/Library/Application Su
 
 **功能**
 
-- 嵌入 alphaXiv 的 Assistant 面板，也可以在浏览器侧栏使用
+- 嵌入 alphaXiv 的 Assistant 面板；在 arXiv 上点击右下角的 **Sidecar** 按钮
 - 支持 ChatGPT 账号，以及 DeepSeek、Kimi、通义千问、OpenRouter、OpenAI、Claude、Ollama 等 API
 - 每篇论文独立对话，可查看历史
 - 系统提示词可自行修改
@@ -83,7 +83,7 @@ cd paper-sidecar
 
 1. 打开 `edge://extensions` 或 `chrome://extensions`，开启**开发人员模式**。
 2. 点击**加载解压缩的扩展**，选择 `extension` 文件夹。
-3. 在 alphaXiv 打开一篇论文，展开 Assistant，选择 **Sidecar**；或点击工具栏图标。
+3. 打开一篇论文：alphaXiv 上展开 Assistant 并选择 **Sidecar**；arXiv 上点击右下角的 **Sidecar** 按钮。
 4. 点击 **⚙**，登录 ChatGPT 或添加 API Key。
 
 更新代码后，重新运行 `./install.command`，并在扩展页点击**重新加载**。

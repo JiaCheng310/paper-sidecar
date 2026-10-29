@@ -37,6 +37,12 @@ function backgroundHandler() {
         },
       },
     },
+    tabs: { onUpdated: { addListener() {} }, query: async () => [] },
+    sidePanel: {
+      setOptions: async () => {},
+      setPanelBehavior: async () => {},
+      open: async () => {},
+    },
     storage: {
       local: {
         get: async () => structuredClone(stored),

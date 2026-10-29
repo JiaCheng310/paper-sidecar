@@ -321,7 +321,7 @@ async function refreshContext() {
     context = null;
     $("paper-title").textContent = "打开一篇论文";
     $("paper-id").textContent = "";
-    $("paper-status").textContent = "支持 alphaXiv 与 arXiv 的论文页面";
+    $("paper-status").textContent = "支持 alphaXiv 与 arXiv 论文页面";
     $("pdf-link").hidden = true;
     if (changed) {
       selectedText = "";
@@ -355,8 +355,12 @@ async function refreshContext() {
   return true;
 }
 
+// The side panel opened for one tab stays bound to it (see background.js).
+const boundTab = !embedded && panelParams.has("tabId") && Number.isSafeInteger(sourceTabId);
+
 async function contextTab() {
   if (embedded) return validReader ? chrome.tabs.get(sourceTabId) : null;
+  if (boundTab) return chrome.tabs.get(sourceTabId);
   return (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
 }
 
@@ -400,6 +404,11 @@ function connect() {
         options.showRuntime(message.settings);
     } else if (message.event === "paper") {
       if (message.paperId === context?.paperId) {
+        // In the browser's PDF viewer the page only knows the arXiv number.
+        if (message.title && /^\[?[\w./-]*\d{4}\.?\d*(v\d+)?\]?$/.test(context.title)) {
+          context.title = message.title;
+          $("paper-title").textContent = message.title;
+        }
         $("paper-status").textContent =
           `${message.pageCount} 页 · ${message.hasTextLayer ? "原文可读取" : "可按页查看图片"}`;
         $("pdf-link").href = message.pdfUrl;
@@ -681,7 +690,7 @@ document.querySelectorAll("[data-prompt]").forEach((button) =>
   }),
 );
 chrome.tabs.onActivated.addListener(() => {
-  if (!embedded) void refreshContext();
+  if (!embedded && !boundTab) void refreshContext();
 });
 chrome.tabs.onUpdated.addListener((id, change) => {
   if (id === lastTabId && (change.url || change.status === "complete")) void refreshContext();

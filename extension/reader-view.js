@@ -40,16 +40,67 @@ globalThis.PaperSidecarReader = (() => {
             "PingFang SC",
             sans-serif;
         }
+        .launcher {
+          position: fixed;
+          right: 20px;
+          bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 14px 8px 9px;
+          border: 1px solid #e7dfe1;
+          border-radius: 999px;
+          background: #fff;
+          color: #25252b;
+          box-shadow: 0 6px 20px #0000001f;
+          cursor: pointer;
+          pointer-events: auto;
+          font:
+            600 13px -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+          transition:
+            transform 160ms ease,
+            box-shadow 160ms ease;
+        }
+        .launcher:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 10px 26px #00000029;
+        }
+        .launcher:focus-visible {
+          outline: 2px solid #a51f39;
+          outline-offset: 3px;
+        }
+        .launcher img {
+          width: 22px;
+          height: 22px;
+          border-radius: 6px;
+        }
         @media (prefers-color-scheme: dark) {
           iframe {
             background: #19191c;
           }
+          .launcher {
+            background: #232227;
+            color: #e4e2e9;
+            border-color: #3b3743;
+          }
         }
       </style>
       <iframe title="Paper Sidecar" hidden></iframe>
+      <button type="button" class="launcher" title="在侧栏打开 Paper Sidecar" hidden>
+        <img alt="" />Sidecar
+      </button>
       <div class="error" role="status" hidden></div>`;
     const frame = shadow.querySelector("iframe");
     const error = shadow.querySelector(".error");
+    // arXiv has no Assistant panel to share, so a button opens the browser side panel.
+    const launcher = shadow.querySelector(".launcher");
+    launcher.querySelector("img").src = chrome.runtime.getURL("icons/icon.svg");
+    launcher.addEventListener("click", () => {
+      chrome.runtime.sendMessage({ type: "open-side-panel" }).catch(() => {});
+    });
     const extensionOrigin = chrome.runtime.getURL("").replace(/\/$/, "");
     let paper = null;
     const workspace = PaperSidecarWorkspace.create({
@@ -101,6 +152,7 @@ globalThis.PaperSidecarReader = (() => {
     function setPaper(next) {
       paper = next;
       const supported = !!paper && /(^|\.)alphaxiv\.org$/.test(location.hostname);
+      launcher.hidden = !paper || !/(^|\.)arxiv\.org$/.test(location.hostname);
       workspace.setEnabled(supported);
       if (!supported) {
         frame.hidden = true;
