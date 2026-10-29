@@ -98,7 +98,7 @@ globalThis.PaperSidecarWorkspace = (() => {
       </style>
       <span class="switch" role="group" aria-label="选择论文助手">
         <button type="button" data-provider="alphaxiv" aria-pressed="true">alphaXiv</button>
-        <button type="button" data-provider="codex" aria-pressed="false">伴读</button>
+        <button type="button" data-provider="codex" aria-pressed="false">Sidecar</button>
       </span>`;
     shadow.querySelectorAll("button").forEach((button) => {
       button.addEventListener("click", () => onProviderSelect(button.dataset.provider));

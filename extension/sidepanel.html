@@ -3,13 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>论文伴读 · Paper Sidecar</title>
+    <title>Paper Sidecar</title>
     <link rel="stylesheet" href="vendor/katex.min.css" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="topbar standalone-only">
-      <div class="brand"><img class="mark" src="icons/icon.svg" alt="" /><span>论文伴读</span></div>
+      <div class="brand">
+        <img class="mark" src="icons/icon.svg" alt="" /><span>Paper Sidecar</span>
+      </div>
     </header>
     <section class="paper-card standalone-only">
       <div class="eyebrow">CURRENT PAPER <span id="paper-id"></span></div>
@@ -20,7 +22,7 @@
       </div>
     </section>
     <div class="tabs standalone-only">
-      <span class="tab active">对话</span><span class="model" id="model">Paper Sidecar</span>
+      <span class="tab active">对话</span><span class="model" id="model">本机运行</span>
     </div>
     <main id="conversation" aria-live="polite">
       <section id="welcome">

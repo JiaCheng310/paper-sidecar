@@ -219,7 +219,7 @@ function messageNode(message) {
   const label = document.createElement("div");
   label.className = "label";
   const name = document.createElement("span");
-  name.textContent = message.role === "user" ? "你" : "伴读";
+  name.textContent = message.role === "user" ? "你" : "Sidecar";
   label.append(name);
   if (message.role === "assistant" && !streaming && message.text) label.append(copyButton(message));
   const body = document.createElement("div");

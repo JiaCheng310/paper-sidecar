@@ -82,7 +82,7 @@ class CodexClient:
             # Pin the reader's runtime independently of any globally installed Codex CLI.
             binary = self.root / "node_modules/.bin/codex"
             if not binary.is_file():
-                raise RuntimeError("论文伴读的模型运行程序缺失，请重新运行 install.command。")
+                raise RuntimeError("Paper Sidecar 的模型运行程序缺失，请重新运行 install.command。")
             args = [str(binary), "app-server"]
             for key, value in reader_config(self.home).items():
                 args += ["-c", f"{key}={json.dumps(value)}"]

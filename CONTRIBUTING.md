@@ -10,7 +10,7 @@
 | `extension/paper-context.js` | 论文编号、版本匹配和 PDF 地址选择 |
 | `extension/content.js` | 当前网页信息、选区、站内导航跟踪 |
 | `extension/alphaxiv-workspace.js` | 识别 alphaXiv 原有 Assistant，放置提供方切换按钮，保留并恢复原助手状态 |
-| `extension/reader-view.js` | 伴读 iframe 的布局、生命周期与来源校验，不管理 PDF 查看器 |
+| `extension/reader-view.js` | Sidecar iframe 的布局、生命周期与来源校验，不管理 PDF 查看器 |
 | `extension/reader-options.js` | 根据模型目录（Codex 与其他 API）生成分组选项、保存选择 |
 | `extension/settings-view.js` | 设置页：ChatGPT 账号登录、系统提示词编辑、其他模型 API 管理 |
 | `extension/sidepanel.html`、`style.css` | 聊天界面的结构与样式 |
@@ -31,8 +31,8 @@
 ## 维护约定
 
 - 修改权限和入口直接编辑 `manifest.json`。安装脚本读取该文件，不重建或覆盖配置；其中的公开 key 用于保持扩展 ID 稳定。
-- 不移除或重新挂载 alphaXiv 的 PDF、Assistant 或输入框。切换到“伴读”时只隐藏原助手内容并保留几何尺寸，切回时恢复原样式、可访问属性和草稿。
-- 收起助手或切回 alphaXiv 只隐藏伴读 iframe，不重新赋值地址。离开支持的论文页面才卸载 iframe、关闭原生连接。
+- 不移除或重新挂载 alphaXiv 的 PDF、Assistant 或输入框。切换到 Sidecar 时只隐藏原助手内容并保留几何尺寸，切回时恢复原样式、可访问属性和草稿。
+- 收起助手或切回 alphaXiv 只隐藏 Sidecar iframe，不重新赋值地址。离开支持的论文页面才卸载 iframe、关闭原生连接。
 - 模型选项从 app-server 目录读取；不要将 Fast 倍率硬编码到某个模型。每轮明确传入模型、推理强度和服务档位。
 - 默认系统提示词内置在 `host/reader_settings.py`；用户在设置中保存的提示词优先。每轮重新确定提示词；变更时重建临时线程并恢复近期问答。
 - Codex 使用独立的 `CODEX_HOME`，登录、退出只影响本扩展。不要改回 `~/.codex`。

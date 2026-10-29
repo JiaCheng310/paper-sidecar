@@ -112,7 +112,7 @@ export async function createReaderOptions(document, storage, onError) {
       );
       ready = true;
       updateCapabilities(preferred);
-      document.getElementById("model").textContent = "Paper Sidecar";
+      document.getElementById("model").textContent = "本机运行";
     },
     showRuntime(settings) {
       const name = catalog.find((item) => item.id === settings.model)?.name || settings.model;

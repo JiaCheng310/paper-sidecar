@@ -107,6 +107,6 @@ print -r -- "${GREEN}${BOLD}安装完成。${RESET}剩下的步骤在浏览器�
 print -r -- "  1. 打开扩展管理页（Edge：edge://extensions，Chrome：chrome://extensions），开启“开发人员模式”。"
 print -r -- "  2. 首次安装：点击“加载解压缩的扩展”，选择 ${BOLD}$ROOT/extension${RESET}"
 print -r -- "     已安装过：在 Paper Sidecar 卡片上点击“重新加载”。"
-print -r -- "  3. 刷新 alphaXiv 论文页面，在 Assistant 标题栏选择“伴读”；或点击工具栏的扩展图标。"
+print -r -- "  3. 刷新 alphaXiv 论文页面，在 Assistant 标题栏选择 Sidecar；或点击工具栏的扩展图标。"
 print -r -- "  4. 点击输入框旁的 ⚙，登录 ChatGPT 账号或添加 DeepSeek、Claude 等 API。"
 print -r -- "  ${DIM}扩展 ID：$extension_id${RESET}"

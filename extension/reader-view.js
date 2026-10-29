@@ -46,7 +46,7 @@ globalThis.PaperSidecarReader = (() => {
           }
         }
       </style>
-      <iframe title="论文伴读" hidden></iframe>
+      <iframe title="Paper Sidecar" hidden></iframe>
       <div class="error" role="status" hidden></div>`;
     const frame = shadow.querySelector("iframe");
     const error = shadow.querySelector(".error");
@@ -94,7 +94,7 @@ globalThis.PaperSidecarReader = (() => {
         workspace.select(next);
         await chrome.storage.local.set({ readerProvider: next });
       } catch {
-        showError("论文伴读未能打开，请刷新论文页面后重试。");
+        showError("Paper Sidecar 未能打开，请刷新论文页面后重试。");
       }
     }
 

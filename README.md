@@ -1,10 +1,10 @@
 <p align="center"><img src="extension/icons/icon-128.png" width="96" alt="" /></p>
 
-# Paper Sidecar · 论文伴读
+# Paper Sidecar
 
 在 alphaXiv / arXiv 论文页面旁边和 AI 一起读论文。助手直接读取 PDF 原文（按页读取、全文搜索、查看页图），回答时标注页码，支持 Markdown、LaTeX 公式和流式输出。
 
-- **嵌入 alphaXiv**：在 alphaXiv 原有 Assistant 标题栏切换到“伴读”，或点击工具栏图标打开浏览器侧栏（alphaXiv 和 arXiv 均可）。
+- **嵌入 alphaXiv**：在 alphaXiv 原有 Assistant 标题栏切换到 **Sidecar**，或点击工具栏图标打开浏览器侧栏（alphaXiv 和 arXiv 均可）。
 - **多种模型**：ChatGPT 账号（通过内置的 Codex 运行时，支持联网检索），以及 DeepSeek、Kimi、通义千问、智谱、OpenRouter、OpenAI、Anthropic Claude、本机 Ollama 等 API。
 - **可编辑的系统提示词**：内置一份论文阅读流程，可以在设置里改成你自己的。
 - **本机运行**：PDF 在本机下载和解析，API Key 只保存在本机。
@@ -27,7 +27,7 @@ cd paper-sidecar
 
 1. 打开 `edge://extensions` 或 `chrome://extensions`，开启“开发人员模式”。
 2. 点击“加载解压缩的扩展”，选择项目中的 `extension` 文件夹。
-3. 打开一篇 alphaXiv 论文，展开 Assistant，在标题栏选择 **伴读**；或点击工具栏的扩展图标。
+3. 打开一篇 alphaXiv 论文，展开 Assistant，在标题栏选择 **Sidecar**；或点击工具栏的扩展图标。
 4. 点击输入框旁的 **⚙** 完成设置（见下文）。
 
 移动项目目录或更新代码后，重新运行 `./install.command`，并在扩展管理页点击“重新加载”，再刷新论文页面。
@@ -65,7 +65,7 @@ cd paper-sidecar
 
 ## 排查
 
-- **没有“伴读”切换按钮**：确认是带 arXiv 编号的 alphaXiv 论文页面，并已展开 Assistant；重新加载扩展并刷新页面。也可以用工具栏图标打开侧栏。
+- **没有 Sidecar 切换按钮**：确认是带 arXiv 编号的 alphaXiv 论文页面，并已展开 Assistant；重新加载扩展并刷新页面。也可以用工具栏图标打开侧栏。
 - **提示“本机未连接”**：重新运行 `./install.command`，然后重新打开侧栏。
 - **提示账号尚未登录**：在 ⚙ 设置中登录，或切换到已添加的 API 模型。
 - **API 报错 401 / 404**：检查 API Key、Base URL（OpenAI 兼容接口通常以 `/v1` 结尾）和模型名称。

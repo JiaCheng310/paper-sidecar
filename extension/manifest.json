@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Paper Sidecar · 论文伴读",
+  "name": "Paper Sidecar",
   "version": "0.1.0",
   "description": "在 alphaXiv / arXiv 论文页旁与 AI 一起读论文：支持 ChatGPT 账号及 DeepSeek、Claude 等 API，直接读取 PDF 原文。",
   "icons": {
@@ -20,7 +20,7 @@
     "https://pdfs.assets.alphaxiv.org/*"
   ],
   "action": {
-    "default_title": "打开论文伴读",
+    "default_title": "打开 Paper Sidecar",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"
