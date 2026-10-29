@@ -17,7 +17,7 @@ A browser extension for [alphaXiv](https://www.alphaxiv.org) and [arXiv](https:/
 - A small icon at the bottom right of alphaXiv and arXiv paper pages opens a wide panel on the right; drag its edge to resize
 - Use your ChatGPT account, or APIs like DeepSeek, Kimi, Qwen, OpenRouter, OpenAI, Claude and Ollama
 - Each paper has its own conversation, with history
-- Editable system prompt
+- A thorough default reading workflow based on [PaperForge](https://github.com/FeijiangHan/PaperForge), editable in settings
 - Runs locally; API keys never leave your Mac
 
 ### Install
@@ -68,7 +68,7 @@ PDFs come only from arXiv. Everything stays on your Mac: API keys and settings i
 - 在 alphaXiv 和 arXiv 论文页右下角点击小图标，在页面右侧打开宽面板，拖动边缘可调整宽度
 - 支持 ChatGPT 账号，以及 DeepSeek、Kimi、通义千问、OpenRouter、OpenAI、Claude、Ollama 等 API
 - 每篇论文独立对话，可查看历史
-- 系统提示词可自行修改
+- 默认采用 [PaperForge](https://github.com/FeijiangHan/PaperForge) 的论文精读流程，可在设置中修改
 - 在本机运行，API Key 只保存在你的 Mac 上
 
 ### 安装
@@ -135,4 +135,4 @@ Paper Sidecar 是独立的非商业开源项目，与 arXiv、alphaXiv 没有任
 
 ## License · 许可证
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE). The default system prompt (`host/default_prompt.md`) comes from [PaperForge](https://github.com/FeijiangHan/PaperForge) by FeijiangHan. 默认系统提示词来自 FeijiangHan 的 PaperForge。
