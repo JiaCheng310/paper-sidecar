@@ -601,7 +601,7 @@ function connect() {
     $("connection").dataset.state = "offline";
     notice(
       reason?.includes("not found")
-        ? "首次使用：运行项目中的 install.command，再重新打开侧栏。"
+        ? "首次使用：运行项目中的安装程序（macOS：install.command，Windows：install.bat），再重新打开面板。"
         : `本机连接已断开。${reason || ""} 请重新打开侧栏。`,
       true,
     );

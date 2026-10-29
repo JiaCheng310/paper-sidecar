@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import shutil
 import tomllib
 
 from host.user_settings import CODEX_HOME, private_dir
@@ -80,11 +81,14 @@ class CodexClient:
         async with self.start_lock:
             if self.process and self.process.returncode is None:
                 return
-            # Pin the reader's runtime independently of any globally installed Codex CLI.
-            binary = self.root / "node_modules/.bin/codex"
-            if not binary.is_file():
-                raise RuntimeError("Paper Sidecar 的模型运行程序缺失，请重新运行 install.command。")
-            args = [str(binary), "app-server"]
+            # Pin the reader's runtime independently of any globally installed Codex CLI, and
+            # start it through node so the same command works on macOS, Windows and Linux
+            # (node_modules/.bin/codex is a shell script, or a .cmd file on Windows).
+            script = self.root / "node_modules/@openai/codex/bin/codex.js"
+            node = shutil.which("node")
+            if not script.is_file() or not node:
+                raise RuntimeError("Paper Sidecar 的模型运行程序或 Node.js 缺失，请重新运行安装脚本。")
+            args = [node, str(script), "app-server"]
             for key, value in reader_config(self.home).items():
                 args += ["-c", f"{key}={json.dumps(value)}"]
             # A private CODEX_HOME keeps this login independent of the user's terminal Codex.

@@ -9,11 +9,27 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sys
 import tempfile
 from urllib.parse import urlparse
 
-APP_DIR = Path(os.environ.get("PAPER_SIDECAR_HOME",
-                              Path.home() / "Library/Application Support/paper-sidecar"))
+
+def platform_dirs(platform=sys.platform, environ=os.environ, home=None):
+    """Where settings and the PDF cache live on macOS, Windows and Linux."""
+    home = Path(home or Path.home())
+    if platform == "win32":
+        local = Path(environ.get("LOCALAPPDATA") or home / "AppData/Local")
+        return local / "paper-sidecar", local / "paper-sidecar/cache"
+    if platform == "darwin":
+        return (home / "Library/Application Support/paper-sidecar",
+                home / "Library/Caches/paper-sidecar")
+    data = Path(environ.get("XDG_DATA_HOME") or home / ".local/share")
+    cache = Path(environ.get("XDG_CACHE_HOME") or home / ".cache")
+    return data / "paper-sidecar", cache / "paper-sidecar"
+
+
+DATA_DIR, CACHE_DIR = platform_dirs()
+APP_DIR = Path(os.environ.get("PAPER_SIDECAR_HOME", DATA_DIR))
 LEGACY_NAME = "alphaxiv-codex-sidebar"
 # The extension signs in to Codex separately, so logging in or out here never touches ~/.codex.
 CODEX_HOME = APP_DIR / "codex"
@@ -23,7 +39,7 @@ PROVIDER_KINDS = {"openai", "anthropic"}
 
 def migrate_legacy_dirs():
     """Move settings, login and cache from the project's former name, once."""
-    if "PAPER_SIDECAR_HOME" in os.environ:
+    if "PAPER_SIDECAR_HOME" in os.environ or sys.platform != "darwin":
         return
     library = Path.home() / "Library"
     for parent, new in [(library / "Application Support", APP_DIR),

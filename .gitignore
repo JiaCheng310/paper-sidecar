@@ -5,3 +5,5 @@ __pycache__/
 installation.json
 host-launcher
 extension/vendor/
+host-launcher.bat
+native-host.json

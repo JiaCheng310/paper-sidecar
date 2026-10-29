@@ -2,11 +2,13 @@
 
 import asyncio
 import json
+import os
 from pathlib import Path
 import re
 import signal
 import struct
 import sys
+import threading
 import time
 
 from host.codex_client import CodexClient, READER_INSTRUCTIONS, paper_tools
@@ -450,15 +452,38 @@ class Bridge:
         self.papers.close()
 
 
+def read_frames(loop, queue):
+    """Read native-messaging frames on a thread (asyncio pipes do not work for stdin on Windows)."""
+    stream = sys.stdin.buffer
+    try:
+        while len(header := stream.read(4)) == 4:
+            size = struct.unpack("=I", header)[0]
+            if not 0 < size <= MAX_MESSAGE:
+                break
+            body = stream.read(size)
+            if len(body) < size:
+                break
+            loop.call_soon_threadsafe(queue.put_nowait, body)
+    finally:
+        loop.call_soon_threadsafe(queue.put_nowait, None)  # The browser closed the port.
+
+
 async def main():
     migrate_legacy_dirs()
+    if sys.platform == "win32":
+        import msvcrt
+        # Native messaging is a binary protocol; Windows would otherwise translate newlines.
+        msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
+        msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
     loop = asyncio.get_running_loop()
     main_task = asyncio.current_task()
     for name in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(name, main_task.cancel)
-    reader = asyncio.StreamReader(limit=MAX_MESSAGE)
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
+        try:
+            loop.add_signal_handler(name, main_task.cancel)
+        except (NotImplementedError, RuntimeError):
+            pass  # Windows: the browser ends the host by closing its pipes.
+    frames = asyncio.Queue()
+    threading.Thread(target=read_frames, args=(loop, frames), daemon=True).start()
     bridge, tasks = Bridge(), set()
 
     async def watch_idle():
@@ -468,18 +493,14 @@ async def main():
 
     idle_watch = asyncio.create_task(watch_idle())
     try:
-        while True:
-            header = await reader.readexactly(4)
-            size = struct.unpack("=I", header)[0]
-            if not 0 < size <= MAX_MESSAGE:
-                raise ValueError("消息大小不合法。")
-            message = json.loads(await reader.readexactly(size))
+        while (body := await frames.get()) is not None:
+            message = json.loads(body)
             if not isinstance(message, dict):
                 raise ValueError("消息格式不合法。")
             task = asyncio.create_task(bridge.handle(message))
             tasks.add(task)
             task.add_done_callback(tasks.discard)
-    except (asyncio.IncompleteReadError, asyncio.CancelledError):
+    except asyncio.CancelledError:
         pass
     finally:
         idle_watch.cancel()

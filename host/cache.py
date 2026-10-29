@@ -12,8 +12,9 @@ import time
 import urllib.parse
 
 from host.papers import MAX_PDF_BYTES, validate_pdf_url
+from host.user_settings import CACHE_DIR
 
-DEFAULT_CACHE_DIR = Path.home() / "Library/Caches/paper-sidecar"
+DEFAULT_CACHE_DIR = CACHE_DIR
 MAX_DISK_CACHE_BYTES = 512 * 1024 * 1024
 LATEST_VERSION_MAX_AGE = 24 * 60 * 60
 ENTRY_NAME = re.compile(r"[a-f0-9]{64}\Z")

@@ -66,7 +66,6 @@ check python3 "运行 xcode-select --install，或 brew install python"
 check uv "brew install uv，或参考 https://docs.astral.sh/uv/"
 check node "brew install node，或用 nvm 安装 Node.js 18 以上版本"
 check npm "随 Node.js 一起安装"
-check openssl "macOS 自带；如缺失可 brew install openssl"
 (( ${#missing} == 0 )) || fail "缺少 ${(j:、:)missing}，安装后重新运行。"
 node_major=${$(node -p 'process.versions.node.split(".")[0]'):-0}
 (( node_major >= 18 )) || fail "Node.js 版本过低（当前 $(node -v)），需要 18 或更高版本。"

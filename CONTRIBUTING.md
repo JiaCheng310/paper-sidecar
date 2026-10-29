@@ -23,7 +23,8 @@
 | `host/direct_client.py` | OpenAI 兼容与 Anthropic 接口的流式调用和 PDF 工具循环 |
 | `host/papers.py` | 获取、校验、解析 PDF 和内存缓存 |
 | `host/cache.py` | 固定目录下的磁盘缓存及清理 |
-| `setup.py` | 安装锁定依赖、准备第三方前端文件、生成本机启动器 |
+| `setup.py` | 安装锁定依赖、准备第三方前端文件，按平台生成本机启动器并注册（macOS/Linux 写清单文件，Windows 写注册表） |
+| `install.command`、`install.bat` / `install.ps1` | macOS 与 Windows 的双击安装程序 |
 
 内容脚本按 manifest 中的顺序加载：`reader-view.js` 只放置一个浮动图标，`content.js` 负责页面状态。侧栏按标签页打开（`sidepanel.html?tabId=…`），只在 alphaXiv / arXiv 标签页启用。页面标题、来源路径和提示词通过 DOM 属性或 textContent 设置，不拼进 HTML。
 
