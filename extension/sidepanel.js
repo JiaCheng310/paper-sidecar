@@ -23,8 +23,9 @@ const library = (await chrome.storage.local.get("library")).library || {};
 let context = null,
   port = null,
   connected = false,
-  selectedText = "",
-  activeTurn = null;
+  selectedText = "";
+// Answers in progress, one per paper; other papers stay usable while one is answering.
+const turns = new Map();
 let refreshSequence = 0,
   lastTabId = null;
 let saveQueue = Promise.resolve();
@@ -71,9 +72,30 @@ function send(type, payload = {}) {
   return requestId;
 }
 
+// All versions of a paper (1706.03762, 1706.03762v7) share one conversation.
+const conversationKey = (paperId) => paperId.replace(/v\d+$/, "");
+
 function entry(key) {
-  return (library[key] ||= { messages: [], archives: [], updated: Date.now() });
+  if (!library[key]) {
+    // Older releases stored one conversation per version; adopt the most recent one.
+    const legacy = Object.keys(library)
+      .filter((id) => id !== key && conversationKey(id) === key)
+      .map((id) => library[id])
+      .sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    library[key] = {
+      messages: legacy[0]?.messages || [],
+      archives: legacy.flatMap((item, index) =>
+        index ? [...item.archives, item.messages] : item.archives,
+      ),
+      updated: Date.now(),
+    };
+    library[key].archives = library[key].archives.filter((messages) => messages?.length);
+  }
+  return library[key];
 }
+
+const currentTurn = () => (context ? turns.get(context.key) : undefined);
+const turnFor = (requestId) => [...turns.values()].find((turn) => turn.requestId === requestId);
 
 function persist(paperId) {
   // Persist only the changed paper's visible chat, never PDF or tool payloads.
@@ -191,7 +213,7 @@ function copyButton(message) {
 }
 
 function messageNode(message) {
-  const streaming = message === activeTurn?.answer;
+  const streaming = [...turns.values()].some((turn) => turn.answer === message);
   const node = document.createElement("article");
   node.className = `message ${message.role}${streaming ? " streaming" : ""}`;
   const label = document.createElement("div");
@@ -212,7 +234,7 @@ function renderMessages() {
   clearTimeout(streamTimer);
   streamTimer = null;
   const shouldScroll = nearBottom();
-  const messages = context ? entry(context.paperId).messages : [];
+  const messages = context ? entry(context.key).messages : [];
   $("welcome").hidden = messages.length > 0;
   $("messages").replaceChildren(...messages.map(messageNode));
   if (shouldScroll) scrollToBottom();
@@ -225,11 +247,12 @@ function renderMessages() {
 function renderStreaming() {
   streamTimer = null;
   streamRenderedAt = Date.now();
-  if (!activeTurn || activeTurn.paperId !== context?.paperId) return;
+  const turn = currentTurn();
+  if (!turn) return;
   const node = $("messages").lastElementChild;
   if (!node?.classList.contains("streaming")) return renderMessages();
   const shouldScroll = nearBottom();
-  renderAnswer(node.querySelector(".body"), activeTurn.answer, true);
+  renderAnswer(node.querySelector(".body"), turn.answer, true);
   if (shouldScroll) scrollToBottom();
   updateJumpButton();
 }
@@ -249,16 +272,19 @@ function resizeQuestion() {
 }
 
 function updateControls() {
-  $("send").hidden = !!activeTurn;
-  $("stop").hidden = !activeTurn;
+  const busy = !!currentTurn();
+  $("send").hidden = busy;
+  $("stop").hidden = !busy;
   $("send").disabled = !connected || !context || !options.isReady() || !$("question").value.trim();
-  $("reset").disabled = !context || !!activeTurn;
+  $("reset").disabled = !context || busy;
+  $("history").disabled = !context || busy || !entry(context.key).archives.length;
+  if ($("history").disabled) $("history-menu").hidden = true;
   $("question").disabled = !context;
-  options.setBusy(!connected || !!activeTurn);
-  $("refresh-settings").disabled = !connected || !!activeTurn;
+  options.setBusy(!connected || busy);
+  $("refresh-settings").disabled = !connected || turns.size > 0;
   $("clear-cache").disabled =
     !connected ||
-    !!activeTurn ||
+    turns.size > 0 ||
     [...pending.values()].some((request) => request.type === "clear-cache");
 }
 
@@ -289,6 +315,7 @@ async function refreshContext() {
   if (sequence !== refreshSequence) return false;
   const paperId = paperIdFromUrl(data.url);
   const changed = context?.paperId !== paperId || lastTabId !== tab.id;
+  if (changed) $("history-menu").hidden = true;
   lastTabId = tab.id;
   if (!paperId) {
     context = null;
@@ -306,7 +333,13 @@ async function refreshContext() {
     return true;
   }
   const pdfUrl = pdfUrlForPaper(paperId, data.pdfLinks || []);
-  context = { paperId, url: data.url, title: data.title || paperId, pdfUrl };
+  context = {
+    paperId,
+    key: conversationKey(paperId),
+    url: data.url,
+    title: data.title || paperId,
+    pdfUrl,
+  };
   $("paper-title").textContent = context.title;
   $("paper-id").textContent = paperId;
   if (changed) {
@@ -362,11 +395,9 @@ function connect() {
       options.initialize(message);
       settingsView.initialize(message);
       updateControls();
-    } else if (
-      message.event === "runtime-settings" &&
-      message.requestId === activeTurn?.requestId
-    ) {
-      options.showRuntime(message.settings);
+    } else if (message.event === "runtime-settings") {
+      if (turnFor(message.requestId) && turnFor(message.requestId) === currentTurn())
+        options.showRuntime(message.settings);
     } else if (message.event === "paper") {
       if (message.paperId === context?.paperId) {
         $("paper-status").textContent =
@@ -376,27 +407,36 @@ function connect() {
       }
       if (pending.get(message.requestId)?.type === "load") pending.delete(message.requestId);
     } else if (message.event === "status") {
-      if (message.paperId === context?.paperId) notice(message.text);
-    } else if (message.event === "delta" && message.requestId === activeTurn?.requestId) {
-      activeTurn.parts[message.itemId] = (activeTurn.parts[message.itemId] || "") + message.text;
-      activeTurn.answer.text = Object.values(activeTurn.parts).join("\n\n");
-      if (message.paperId === context?.paperId) scheduleStreamRender();
-    } else if (message.event === "done" && message.requestId === activeTurn?.requestId) {
-      activeTurn.answer.text =
+      const turn = turnFor(message.requestId);
+      if (turn ? turn === currentTurn() : message.paperId === context?.paperId)
+        notice(message.text);
+    } else if (message.event === "delta" && turnFor(message.requestId)) {
+      const turn = turnFor(message.requestId);
+      turn.parts[message.itemId] = (turn.parts[message.itemId] || "") + message.text;
+      turn.answer.text = Object.values(turn.parts).join("\n\n");
+      if (turn === currentTurn()) scheduleStreamRender();
+    } else if (message.event === "done" && turnFor(message.requestId)) {
+      const turn = turnFor(message.requestId);
+      const visible = turn === currentTurn();
+      turn.answer.text =
         message.text || (message.interrupted ? "回答已停止。" : "没有返回回答，请重试。");
-      activeTurn = null;
+      turns.delete(turn.key);
       pending.delete(message.requestId);
-      notice(message.interrupted ? "回答已停止" : "");
+      if (visible) notice(message.interrupted ? "回答已停止" : "");
       renderMessages();
-      void persist(message.paperId);
+      void persist(turn.key);
     } else if (message.event === "reset") {
       options.clearRuntime();
-      const item = entry(message.paperId);
-      if (item.messages.length) item.archives.push(item.messages);
-      item.messages = [];
+      const key = conversationKey(message.paperId);
+      // A restored archive was already swapped in locally; only the model context resets.
+      if (!message.restore) {
+        const item = entry(key);
+        if (item.messages.length) item.archives.push(item.messages);
+        item.messages = [];
+        void persist(key);
+      }
       pending.delete(message.requestId);
       renderMessages();
-      void persist(message.paperId);
     } else if (message.event === "cache-cleared") {
       pending.delete(message.requestId);
       notice(
@@ -406,14 +446,14 @@ function connect() {
       updateControls();
     } else if (message.event === "error") {
       settingsView.failed(request);
-      if (message.requestId === activeTurn?.requestId) {
-        const paperId = activeTurn.paperId;
-        activeTurn.answer.text = `${activeTurn.answer.text || ""}\n\n未完成：${message.text}`;
-        activeTurn = null;
+      const turn = turnFor(message.requestId);
+      if (turn) {
+        turn.answer.text = `${turn.answer.text || ""}\n\n未完成：${message.text}`;
+        turns.delete(turn.key);
         renderMessages();
-        void persist(paperId);
+        void persist(turn.key);
       }
-      if (!request?.paperId || request.paperId === context?.paperId) {
+      if (!request?.paperId || conversationKey(request.paperId) === context?.key) {
         notice(message.text, true);
         if (request?.type === "load") $("paper-status").textContent = "PDF 读取失败";
       }
@@ -432,11 +472,11 @@ function connect() {
         : `本机连接已断开。${reason || ""} 请重新打开侧栏。`,
       true,
     );
-    if (activeTurn) {
-      activeTurn.answer.text += "\n\n连接中断，回答未完成。";
-      void persist(activeTurn.paperId);
+    for (const turn of turns.values()) {
+      turn.answer.text += "\n\n连接中断，回答未完成。";
+      void persist(turn.key);
     }
-    activeTurn = null;
+    turns.clear();
     renderMessages();
   });
   port.postMessage({ type: "hello", requestId: crypto.randomUUID() });
@@ -445,11 +485,11 @@ function connect() {
 $("composer").addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = $("question").value.trim();
-  if (!question || !context || activeTurn || !options.isReady()) return;
+  if (!question || !context || currentTurn() || !options.isReady()) return;
   try {
     const refreshed = await refreshContext();
-    if (!refreshed || !context || activeTurn) return;
-    const item = entry(context.paperId);
+    if (!refreshed || !context || currentTurn()) return;
+    const item = entry(context.key);
     const history = item.messages.slice(-20).map(({ role, text }) => ({ role, text }));
     options.clearRuntime();
     const requestId = send("chat", {
@@ -462,8 +502,14 @@ $("composer").addEventListener("submit", async (event) => {
     item.messages.push({ role: "user", text: question, date: Date.now() });
     const answer = { role: "assistant", text: "", date: Date.now() };
     item.messages.push(answer);
-    activeTurn = { requestId, paperId: context.paperId, answer, parts: {} };
-    void persist(context.paperId);
+    turns.set(context.key, {
+      requestId,
+      key: context.key,
+      paperId: context.paperId,
+      answer,
+      parts: {},
+    });
+    void persist(context.key);
     $("question").value = "";
     resizeQuestion();
     selectedText = "";
@@ -478,7 +524,7 @@ $("question").addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     $("composer").requestSubmit();
-  } else if (event.key === "Escape" && activeTurn) {
+  } else if (event.key === "Escape" && currentTurn()) {
     event.preventDefault();
     $("stop").click();
   }
@@ -488,8 +534,10 @@ $("question").addEventListener("input", () => {
   updateControls();
 });
 $("stop").addEventListener("click", () => {
+  const turn = currentTurn();
+  if (!turn) return;
   try {
-    send("cancel");
+    send("cancel", { paperId: turn.paperId });
     notice("正在停止…");
   } catch (error) {
     notice(error.message, true);
@@ -499,6 +547,98 @@ $("conversation").addEventListener("scroll", updateJumpButton, { passive: true }
 $("jump-latest").addEventListener("click", () => scrollToBottom(true));
 $("reset").addEventListener("click", () => {
   if (context) send("reset", { paperId: context.paperId });
+});
+
+// Conversation history: every "＋" archives the previous conversation of the same paper.
+function conversationSummary(messages) {
+  const first = messages.find((message) => message.role === "user");
+  const date = first?.date ? new Date(first.date) : null;
+  const when = date
+    ? `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+    : "较早";
+  return {
+    title: (first?.text || "（空对话）").replace(/\s+/g, " ").slice(0, 60),
+    meta: `${when} · ${Math.ceil(messages.length / 2)} 轮`,
+  };
+}
+
+function renderHistory() {
+  const item = entry(context.key);
+  const rows = [];
+  const current = document.createElement("div");
+  current.className = "history-current";
+  current.textContent = item.messages.length
+    ? `当前：${conversationSummary(item.messages).title}`
+    : "当前：新对话";
+  rows.push(current);
+  item.archives
+    .map((messages, index) => ({ messages, index }))
+    .reverse()
+    .forEach(({ messages, index }) => {
+      const summary = conversationSummary(messages);
+      const row = document.createElement("div");
+      row.className = "history-row";
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "history-open";
+      const title = document.createElement("span");
+      title.textContent = summary.title;
+      const meta = document.createElement("small");
+      meta.textContent = summary.meta;
+      open.append(title, meta);
+      open.addEventListener("click", () => restoreArchive(index));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "icon-button history-delete";
+      remove.title = "删除这段对话";
+      remove.setAttribute("aria-label", "删除这段对话");
+      remove.textContent = "×";
+      remove.addEventListener("click", () => {
+        if (!confirm("删除这段历史对话？此操作不能撤销。")) return;
+        item.archives.splice(index, 1);
+        void persist(context.key);
+        if (item.archives.length) renderHistory();
+        else $("history-menu").hidden = true;
+        updateControls();
+      });
+      row.append(open, remove);
+      rows.push(row);
+    });
+  $("history-list").replaceChildren(...rows);
+}
+
+function restoreArchive(index) {
+  if (!context || currentTurn()) return;
+  const item = entry(context.key);
+  const [restored] = item.archives.splice(index, 1);
+  if (item.messages.length) item.archives.push(item.messages);
+  item.messages = restored;
+  $("history-menu").hidden = true;
+  void persist(context.key);
+  renderMessages();
+  try {
+    // Drop the model's context so the next question continues from the restored history.
+    send("reset", { paperId: context.paperId, restore: true });
+  } catch {
+    /* Without a connection there is no model context to reset. */
+  }
+}
+
+$("history").addEventListener("click", () => {
+  const menu = $("history-menu");
+  if (!menu.hidden || !context) {
+    menu.hidden = true;
+    return;
+  }
+  renderHistory();
+  menu.hidden = false;
+});
+document.addEventListener("click", (event) => {
+  if (!$("history-menu").hidden && !event.target.closest("#history-menu, #history"))
+    $("history-menu").hidden = true;
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") $("history-menu").hidden = true;
 });
 $("clear-cache").addEventListener("click", () => {
   try {
@@ -568,7 +708,7 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void refreshContext();
 });
 window.addEventListener("pagehide", () => {
-  if (activeTurn) void persist(activeTurn.paperId);
+  for (const turn of turns.values()) void persist(turn.key);
 });
 if (validReader) {
   connect();

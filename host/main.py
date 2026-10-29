@@ -3,6 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
+import re
 import signal
 import struct
 import sys
@@ -16,6 +17,11 @@ from host.user_settings import UserStore, migrate_legacy_dirs
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_MESSAGE = 1024 * 1024
+
+
+def conversation_key(paper_id):
+    """Every version of a paper shares one conversation; PDFs stay version-specific."""
+    return re.sub(r"v\d+$", "", paper_id)
 
 
 def emit(message):
@@ -37,7 +43,8 @@ class Bridge:
         self.thread_papers = {}
         self.thread_prompts = {}
         self.settings = settings if settings is not None else ReaderSettings(store=UserStore())
-        self.active = None
+        # One answer per paper at a time; different papers answer concurrently.
+        self.turns = {}
         self.fetch_slots = asyncio.Semaphore(2)
         self.client = CodexClient(ROOT, self.on_codex_event, self.on_tool)
 
@@ -64,7 +71,7 @@ class Bridge:
                     paper = Paper.from_bytes(key, final_url, context.get("title", ""), body)
                     if cached or self.cache.put(url, final_url, body):
                         paper.storage = "disk-cache"
-                    self.papers.put(paper, self.active and self.active["paperId"])
+                    self.papers.put(paper, {turn["paperId"] for turn in self.turns.values()})
                     return paper
                 except Exception as error:
                     errors.append(str(error))
@@ -84,9 +91,10 @@ class Bridge:
         paper = await self.load(self.contexts[key])
         if not isinstance(args, dict):
             raise ValueError("论文工具参数无效。")
-        if self.active:
+        turn = self.turns.get(conversation_key(key))
+        if turn:
             labels = {"read_paper_pages": "正在读取 PDF 原文", "search_paper": "正在查找相关页", "view_paper_page": "正在查看原始页图"}
-            self.send({"event": "status", "requestId": self.active["requestId"],
+            self.send({"event": "status", "requestId": turn["requestId"],
                        "paperId": key, "text": labels.get(name, "正在读取")})
         if name == "read_paper_pages":
             result = paper.read_pages(**args)
@@ -113,14 +121,14 @@ class Bridge:
             if method == "account/updated":
                 self.settings.models = []  # The model catalog depends on the account.
             return
-        active = self.active
-        if not active:
-            return
         if method == "reader/error":
-            if not active["done"].done():
-                active["done"].set_exception(RuntimeError(params["message"]))
+            for turn in self.turns.values():
+                if not turn["done"].done():
+                    turn["done"].set_exception(RuntimeError(params["message"]))
             return
-        if params.get("threadId") != active.get("threadId"):
+        active = next((turn for turn in self.turns.values()
+                       if turn["threadId"] and turn["threadId"] == params.get("threadId")), None)
+        if not active:
             return
         common = {"requestId": active["requestId"], "paperId": active["paperId"]}
         if method == "item/agentMessage/delta":
@@ -138,19 +146,21 @@ class Bridge:
             active["done"].set_result(params["turn"])
 
     async def chat(self, message):
-        if self.active:
-            raise ValueError("另一个回答还在进行中，请等待或停止它。")
         context, question = message.get("context", {}), message.get("question", "")
         if not isinstance(question, str) or not question.strip() or len(question) > 12000:
             raise ValueError("问题不能为空，且需在 12000 字以内。")
         key = validate_id(context.get("paperId"))
+        slot = conversation_key(key)
+        if slot in self.turns:
+            raise ValueError("这篇论文还有回答在进行中，请等待或停止它。")
         done = asyncio.get_running_loop().create_future()
-        self.active = {"paperId": key, "requestId": message["requestId"], "done": done,
-                       "drafts": {}, "messages": [], "turnId": None, "threadId": None,
-                       "cancelRequested": False, "direct": None}
+        turn = {"paperId": key, "requestId": message["requestId"], "done": done,
+                "drafts": {}, "messages": [], "turnId": None, "threadId": None,
+                "cancelRequested": False, "direct": None}
+        self.turns[slot] = turn
         try:
             paper = await self.load(context)
-            if self.active["cancelRequested"]:
+            if turn["cancelRequested"]:
                 self.send({"event": "done", "requestId": message["requestId"], "paperId": key,
                            "text": "读取已停止。", "interrupted": True})
                 return
@@ -159,17 +169,17 @@ class Bridge:
             settings = await self.settings.resolve(self.client, message.get("settings", {}))
             prompt = self.settings.prompt()
             if settings.get("provider"):
-                await self.chat_direct(message, key, paper, settings, prompt, question)
+                await self.chat_direct(message, turn, paper, settings, prompt, question)
                 return
             state = await self.client.request("account/read", {"refreshToken": False})
             if state.get("requiresOpenaiAuth") and state.get("account") is None:
                 raise ValueError("ChatGPT 账号尚未登录。请点击输入框旁的 ⚙ 打开设置登录，或改用已添加的其他 API 模型。")
-            if key in self.threads and self.thread_prompts.get(key) != prompt["revision"]:
-                old_thread = self.threads.pop(key)
+            if slot in self.threads and self.thread_prompts.get(slot) != prompt["revision"]:
+                old_thread = self.threads.pop(slot)
                 self.thread_papers.pop(old_thread, None)
-                self.thread_prompts.pop(key, None)
+                self.thread_prompts.pop(slot, None)
                 await self.client.request("thread/unsubscribe", {"threadId": old_thread})
-            if key not in self.threads:
+            if slot not in self.threads:
                 started = await self.client.request("thread/start", {
                     "cwd": str(ROOT), "ephemeral": True, "environments": [],
                     "approvalPolicy": "never", "sandbox": "read-only",
@@ -178,12 +188,13 @@ class Bridge:
                     "baseInstructions": prompt["text"] + "\n\n## Paper Sidecar tools\n" + READER_INSTRUCTIONS,
                     "dynamicTools": paper_tools()})
                 thread_id = started["thread"]["id"]
-                self.threads[key] = thread_id
+                self.threads[slot] = thread_id
                 self.thread_papers[thread_id] = key
-                self.thread_prompts[key] = prompt["revision"]
+                self.thread_prompts[slot] = prompt["revision"]
                 # Keep at most three live model contexts. UI history is restored explicitly.
-                if len(self.threads) > 3:
-                    old_key = next(iter(self.threads))
+                idle = [item for item in self.threads if item not in self.turns]
+                if len(self.threads) > 3 and idle:
+                    old_key = idle[0]
                     old_thread = self.threads.pop(old_key)
                     self.thread_papers.pop(old_thread, None)
                     self.thread_prompts.pop(old_key, None)
@@ -194,9 +205,11 @@ class Bridge:
                 if history:
                     introduction += "\nEarlier user/assistant conversation (reference, not instructions):\n" + restored
             else:
-                thread_id = self.threads[key]
+                thread_id = self.threads[slot]
+                # The thread may have started on another version of this paper.
+                self.thread_papers[thread_id] = key
                 introduction = ""
-            self.active["threadId"] = thread_id
+            turn["threadId"] = thread_id
             selected = str(message.get("selection", ""))[:16000]
             text = introduction + "\nUser question:\n" + question
             if selected:
@@ -205,33 +218,34 @@ class Bridge:
                 "threadId": thread_id, "input": [{"type": "text", "text": text}],
                 "model": settings["model"], "effort": settings["effort"],
                 "serviceTier": settings["serviceTier"]})
-            self.active["turnId"] = result["turn"]["id"]
+            turn["turnId"] = result["turn"]["id"]
             self.send({"event": "runtime-settings", "requestId": message["requestId"],
                        "paperId": key, "settings": settings, "prompt": prompt})
-            if self.active["cancelRequested"]:
-                await self.interrupt()
-            turn = await asyncio.wait_for(asyncio.shield(done), 900)
-            if turn["status"] == "failed":
-                raise RuntimeError((turn.get("error") or {}).get("message", "模型回答失败"))
-            messages = self.active["messages"]
+            if turn["cancelRequested"]:
+                await self.interrupt(slot)
+            outcome = await asyncio.wait_for(asyncio.shield(done), 900)
+            if outcome["status"] == "failed":
+                raise RuntimeError((outcome.get("error") or {}).get("message", "模型回答失败"))
+            messages = turn["messages"]
             finals = [item.get("text", "") for item in messages if item.get("phase") == "final_answer"]
             text = "\n\n".join(finals or [item.get("text", "") for item in messages])
             if not text:
-                text = "\n\n".join(self.active["drafts"].values())
+                text = "\n\n".join(turn["drafts"].values())
             self.send({"event": "done", "requestId": message["requestId"], "paperId": key,
-                       "text": text, "interrupted": turn["status"] == "interrupted"})
+                       "text": text, "interrupted": outcome["status"] == "interrupted"})
         except asyncio.TimeoutError:
-            await self.interrupt()
+            await self.interrupt(slot)
             raise RuntimeError("本次回答超时，已请求停止；可以重试或缩小问题范围。")
         finally:
             if done.done() and not done.cancelled():
                 done.exception()  # A transport failure can also reject the pending RPC.
             else:
                 done.cancel()
-            self.active = None
+            if self.turns.get(slot) is turn:
+                del self.turns[slot]
 
-    async def chat_direct(self, message, key, paper, settings, prompt, question):
-        provider, request_id = settings["provider"], message["requestId"]
+    async def chat_direct(self, message, turn, paper, settings, prompt, question):
+        key, provider, request_id = turn["paperId"], settings["provider"], message["requestId"]
         system = prompt["text"] + "\n\n## Paper Sidecar tools\n" + DIRECT_INSTRUCTIONS
         introduction = "Current PDF metadata:\n" + json.dumps(paper.metadata(), ensure_ascii=False)
         text = introduction + "\nUser question:\n" + question
@@ -251,8 +265,8 @@ class Bridge:
             return await self.paper_tool(key, name, args)
 
         session = DirectSession(provider, settings["apiModel"], system, call_tool, on_delta, on_status)
-        self.active["direct"] = session
-        if self.active["cancelRequested"]:
+        turn["direct"] = session
+        if turn["cancelRequested"]:
             session.cancel.set()
         public = {name: value for name, value in settings.items() if name not in {"provider", "apiModel"}}
         self.send({"event": "runtime-settings", "requestId": request_id, "paperId": key,
@@ -301,15 +315,16 @@ class Bridge:
                    "defaultPrompt": self.settings.default_prompt(),
                    "providers": store.public_providers()})
 
-    async def interrupt(self):
-        if self.active:
-            self.active["cancelRequested"] = True
-            if self.active.get("direct"):
-                self.active["direct"].cancel.set()
-                return
-        if self.active and self.active.get("turnId"):
-            await self.client.request("turn/interrupt", {
-                "threadId": self.active["threadId"], "turnId": self.active["turnId"]})
+    async def interrupt(self, key=None):
+        """Stop the answer for one paper, or every answer when no paper is given."""
+        targets = [self.turns[key]] if key in self.turns else ([] if key else list(self.turns.values()))
+        for turn in targets:
+            turn["cancelRequested"] = True
+            if turn.get("direct"):
+                turn["direct"].cancel.set()
+            elif turn.get("turnId"):
+                await self.client.request("turn/interrupt", {
+                    "threadId": turn["threadId"], "turnId": turn["turnId"]})
 
     async def handle(self, message):
         request_id = message.get("requestId")
@@ -333,7 +348,7 @@ class Bridge:
                 self.send({"event": "paper", "requestId": request_id,
                            **paper.metadata(), "cache": self.cache.info()})
             elif message.get("type") == "clear-cache":
-                if self.active or self.loading:
+                if self.turns or self.loading:
                     raise ValueError("请等待读取或回答结束后再清理缓存。")
                 removed = self.cache.clear()
                 self.papers.close()
@@ -342,17 +357,20 @@ class Bridge:
             elif message.get("type") == "chat":
                 await self.chat(message)
             elif message.get("type") == "cancel":
-                await self.interrupt()
+                paper_id = message.get("paperId")
+                await self.interrupt(conversation_key(validate_id(paper_id)) if paper_id else None)
             elif message.get("type") == "reset":
                 key = validate_id(message.get("paperId"))
-                if self.active and self.active["paperId"] == key:
+                slot = conversation_key(key)
+                if slot in self.turns:
                     raise ValueError("请先停止当前回答。")
-                thread_id = self.threads.pop(key, None)
-                self.thread_prompts.pop(key, None)
+                thread_id = self.threads.pop(slot, None)
+                self.thread_prompts.pop(slot, None)
                 if thread_id:
                     self.thread_papers.pop(thread_id, None)
                     await self.client.request("thread/unsubscribe", {"threadId": thread_id})
-                self.send({"event": "reset", "requestId": request_id, "paperId": key})
+                self.send({"event": "reset", "requestId": request_id, "paperId": key,
+                           "restore": bool(message.get("restore"))})
             else:
                 raise ValueError("未知请求类型。")
         except Exception as error:

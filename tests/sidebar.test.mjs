@@ -510,3 +510,84 @@ test("settings edit the prompt, add third-party APIs and sign in to ChatGPT", as
     app.dom.window.close();
   }
 });
+
+test("papers answer independently, share history across versions and restore archives", async () => {
+  const app = await makeSidebar();
+  try {
+    const doc = app.window.document;
+    const ask = async (text) => {
+      doc.getElementById("question").value = text;
+      doc
+        .getElementById("composer")
+        .dispatchEvent(new app.window.Event("submit", { cancelable: true }));
+      await tick();
+      return app.sent.filter((message) => message.type === "chat").at(-1);
+    };
+    const chatA = await ask("Question about A");
+    assert.equal(doc.getElementById("stop").hidden, false);
+
+    // While A is still answering, paper B is fully usable and unaffected by A's stream.
+    await app.navigate("2401.12345", "Paper B");
+    assert.equal(doc.getElementById("stop").hidden, true);
+    assert.equal(doc.getElementById("send").hidden, false);
+    app.messages.emit({
+      event: "delta",
+      requestId: chatA.requestId,
+      paperId: "1706.03762",
+      itemId: "a",
+      text: "Streaming A",
+    });
+    assert.doesNotMatch(doc.getElementById("messages").textContent, /Streaming A/);
+    const chatB = await ask("Question about B");
+    assert.notEqual(chatB.requestId, chatA.requestId);
+    doc.getElementById("stop").click();
+    assert.equal(app.sent.at(-1).type, "cancel");
+    assert.equal(app.sent.at(-1).paperId, "2401.12345");
+    app.messages.emit({
+      event: "done",
+      requestId: chatB.requestId,
+      paperId: "2401.12345",
+      text: "B done",
+    });
+
+    // Another version of paper A shows A's conversation and A's still-running answer.
+    await app.navigate("1706.03762v7", "Paper A v7");
+    assert.match(doc.getElementById("messages").textContent, /Question about A.*Streaming A/s);
+    assert.equal(doc.getElementById("stop").hidden, false);
+    app.messages.emit({
+      event: "done",
+      requestId: chatA.requestId,
+      paperId: "1706.03762",
+      text: "A done",
+    });
+    await tick();
+    assert.equal(app.saved.at(-1).library["1706.03762"].messages.at(-1).text, "A done");
+
+    // "＋" archives the conversation; the history menu restores it.
+    assert.equal(doc.getElementById("history").disabled, true);
+    doc.getElementById("reset").click();
+    const reset = app.sent.at(-1);
+    app.messages.emit({ event: "reset", requestId: reset.requestId, paperId: "1706.03762v7" });
+    assert.equal(doc.querySelectorAll(".message").length, 0);
+    assert.equal(doc.getElementById("history").disabled, false);
+    doc.getElementById("history").click();
+    assert.equal(doc.getElementById("history-menu").hidden, false);
+    assert.match(doc.getElementById("history-list").textContent, /Question about A/);
+    doc.querySelector(".history-open").click();
+    const restore = app.sent.at(-1);
+    assert.equal(restore.type, "reset");
+    assert.equal(restore.restore, true);
+    app.messages.emit({
+      event: "reset",
+      requestId: restore.requestId,
+      paperId: "1706.03762v7",
+      restore: true,
+    });
+    await tick();
+    assert.match(doc.getElementById("messages").textContent, /A done/);
+    assert.equal(doc.getElementById("history-menu").hidden, true);
+    assert.equal(app.saved.at(-1).library["1706.03762"].archives.length, 0);
+  } finally {
+    app.dom.window.close();
+  }
+});

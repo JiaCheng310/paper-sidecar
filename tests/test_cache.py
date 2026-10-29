@@ -108,7 +108,7 @@ class BridgeCacheTest(unittest.IsolatedAsyncioTestCase):
             events = []
             bridge = Bridge(events.append, cache)
             try:
-                bridge.active = {"paperId": "1706.03762v7"}
+                bridge.turns = {"1706.03762v7": {"paperId": "1706.03762v7"}}
                 await bridge.handle({"type": "clear-cache", "requestId": "busy-clear"})
                 self.assertEqual(events[-1]["event"], "error")
                 self.assertIsNotNone(cache.get(VERSIONED_URL))

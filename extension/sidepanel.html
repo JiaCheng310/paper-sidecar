@@ -61,6 +61,10 @@
         </div>
         <p></p>
       </div>
+      <div id="history-menu" class="history-menu" hidden>
+        <div class="history-title">这篇论文的历史对话</div>
+        <div id="history-list"></div>
+      </div>
       <form id="composer">
         <textarea
           id="question"
@@ -71,6 +75,25 @@
         <div class="composer-actions">
           <button type="button" id="quote" class="text-button">❝ 引用选中内容</button>
           <span class="header-actions">
+            <button
+              type="button"
+              id="history"
+              class="icon-button"
+              title="这篇论文的历史对话"
+              aria-label="历史对话"
+              aria-controls="history-menu"
+            >
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                <path
+                  d="M3 12a9 9 0 1 0 3-6.7M3 4v4h4M12 7v5l3 2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
             <button
               type="button"
               id="open-settings"

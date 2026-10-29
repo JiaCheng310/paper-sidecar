@@ -181,7 +181,8 @@ class PaperStore:
         self.papers[paper.paper_id] = paper
         while (len(self.papers) > MAX_CACHED_PAPERS or
                sum(item.byte_count for item in self.papers.values()) > MAX_CACHED_BYTES):
-            victim = next((key for key in self.papers if key not in {paper.paper_id, protected}), None)
+            keep = {paper.paper_id, *(protected if isinstance(protected, (set, list, tuple)) else [protected])}
+            victim = next((key for key in self.papers if key not in keep), None)
             if victim is None:
                 break
             self.papers.pop(victim).close()

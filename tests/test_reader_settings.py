@@ -140,5 +140,70 @@ class ReaderSettingsTest(unittest.IsolatedAsyncioTestCase):
                 await bridge.close()
 
 
+class ConcurrentTurnsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_papers_answer_concurrently_and_stop_independently(self):
+        events = []
+        bridge = Bridge(events.append, settings=ReaderSettings(UserStore(None)))
+        client = FakeClient(bridge)
+        release = asyncio.Event()
+        threads = {}
+
+        async def request(method, params):
+            if method == "thread/start":
+                response = await FakeClient.request(client, method, params)
+                threads[response["thread"]["id"]] = None
+                return response
+            if method == "turn/start":
+                client.calls.append((method, params))
+                thread = params["threadId"]
+                common = {"threadId": thread}
+                text = params["input"][0]["text"]
+                async def finish():
+                    if "slow" in text:
+                        await release.wait()
+                    bridge.on_codex_event("item/completed", {**common, "item": {
+                        "type": "agentMessage", "phase": "final_answer", "text": f"answer {thread}"}})
+                    bridge.on_codex_event("turn/completed", {**common, "turn": {"id": "t", "status": "completed"}})
+                asyncio.get_running_loop().call_soon(lambda: asyncio.ensure_future(finish()))
+                return {"turn": {"id": f"turn-{thread}"}}
+            if method == "turn/interrupt":
+                client.calls.append((method, params))
+                return {}
+            return await FakeClient.request(client, method, params)
+
+        client.request = request
+        bridge.client = client
+
+        class LoadedPaper:
+            def __init__(self, key):
+                self.key = key
+            def metadata(self):
+                return {"paperId": self.key, "pageCount": 3, "title": "Paper"}
+
+        async def load(context):
+            return LoadedPaper(context["paperId"])
+        bridge.load = load
+        ask = lambda paper, request_id, question: bridge.handle({
+            "type": "chat", "requestId": request_id, "context": {"paperId": paper}, "question": question})
+        try:
+            slow = asyncio.create_task(ask("1706.03762", "a", "slow question"))
+            await asyncio.sleep(0.01)
+            await ask("2401.12345", "b", "quick question")
+            done = [event for event in events if event["event"] == "done"]
+            self.assertEqual([event["requestId"] for event in done], ["b"])
+            await ask("1706.03762", "a2", "second question")
+            self.assertEqual(events[-1]["event"], "error")
+            self.assertIn("这篇论文", events[-1]["text"])
+            await bridge.handle({"type": "cancel", "requestId": "c", "paperId": "2401.12345"})
+            self.assertFalse(any(method == "turn/interrupt" for method, _ in client.calls))
+            release.set()
+            await slow
+            done = [event for event in events if event["event"] == "done"]
+            self.assertEqual([event["requestId"] for event in done], ["b", "a"])
+            self.assertEqual(bridge.turns, {})
+        finally:
+            await bridge.close()
+
+
 if __name__ == "__main__":
     unittest.main()
