@@ -1,6 +1,6 @@
 (() => {
   if (document.getElementById(PaperSidecarReader.rootId)) return;
-  const reader = PaperSidecarReader.create({ onOpen: refreshPaper });
+  const reader = PaperSidecarReader.create();
   let lastSelection = "";
   let lastUrl = location.href;
   let stateRequest = 0;

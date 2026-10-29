@@ -3,6 +3,9 @@ import { createConversationStore } from "./conversation-store.js";
 
 const conversations = createConversationStore(chrome.storage.local);
 const PAPER_SITE = /^https:\/\/(www\.)?(alphaxiv|arxiv)\.org\//;
+// The browser's PDF viewer does not run content scripts, so the floating icon cannot
+// appear there; a badge on the toolbar icon points to the side panel instead.
+const PDF_VIEWER = /^https:\/\/(www\.)?arxiv\.org\/pdf\//;
 
 // The side panel belongs to one alphaXiv/arXiv tab. Other sites never show it, and
 // switching tabs never carries a conversation over to a different page.
@@ -17,6 +20,9 @@ async function configurePanel(tabId, url) {
     } else {
       await chrome.sidePanel.setOptions({ tabId, enabled: false });
     }
+    const pdf = PDF_VIEWER.test(url || "");
+    await chrome.action.setBadgeText({ tabId, text: pdf ? "AI" : "" });
+    if (pdf) await chrome.action.setBadgeBackgroundColor({ tabId, color: "#a51f39" });
   } catch {
     /* The tab may have closed in the meantime. */
   }

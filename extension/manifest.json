@@ -34,7 +34,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sidepanel.html", "icons/icon.svg"],
+      "resources": ["icons/icon.svg"],
       "matches": [
         "https://alphaxiv.org/*",
         "https://www.alphaxiv.org/*",
@@ -51,7 +51,7 @@
         "https://arxiv.org/*",
         "https://www.arxiv.org/*"
       ],
-      "js": ["alphaxiv-workspace.js", "reader-view.js", "content.js"],
+      "js": ["reader-view.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

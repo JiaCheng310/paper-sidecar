@@ -24,6 +24,7 @@ const backgroundSource = (
 
 function backgroundHandler() {
   const handlers = [];
+  const opened = [];
   let stored = {};
   const browser = {
     runtime: {
@@ -41,7 +42,7 @@ function backgroundHandler() {
     sidePanel: {
       setOptions: async () => {},
       setPanelBehavior: async () => {},
-      open: async () => {},
+      open: async (options) => opened.push(options),
     },
     storage: {
       local: {
@@ -51,7 +52,6 @@ function backgroundHandler() {
         },
       },
     },
-    sidePanel: { setPanelBehavior() {} },
   };
   new Function(
     "chrome",
@@ -60,10 +60,16 @@ function backgroundHandler() {
     "createConversationStore",
     backgroundSource,
   )(browser, paperIdFromUrl, pdfUrlForPaper, createConversationStore);
-  return (...args) => handlers.forEach((handler) => handler(...args));
+  const handle = (...args) => handlers.forEach((handler) => handler(...args));
+  handle.opened = opened;
+  return handle;
 }
 
-async function makeReader(path = "/abs/1706.03762v7", layout = "docked") {
+async function makeReader(
+  path = "/abs/1706.03762v7",
+  layout = "docked",
+  origin = "https://www.alphaxiv.org",
+) {
   const floating = layout === "floating";
   const dom = new JSDOM(
     `
@@ -74,7 +80,7 @@ async function makeReader(path = "/abs/1706.03762v7", layout = "docked") {
       <header><h2>Assistant</h2><div><button aria-label="Close assistant">Close</button></div></header>
       <div role="region" aria-label="Assistant"><textarea aria-label="Assistant">Original draft</textarea></div>
     </div><button aria-label="Ask the assistant">Ask</button>${floating ? "</section>" : "</aside>"}`,
-    { runScripts: "outside-only", url: `https://www.alphaxiv.org${path}` },
+    { runScripts: "outside-only", url: `${origin}${path}` },
   );
   const { window } = dom;
   let poll;
@@ -146,11 +152,8 @@ async function makeReader(path = "/abs/1706.03762v7", layout = "docked") {
     root: host.shadowRoot,
     panel,
     settle,
-    provider: () => window.document.querySelector('[data-paper-sidecar="provider"]')?.shadowRoot,
-    async select(provider) {
-      this.provider().querySelector(`[data-provider="${provider}"]`).click();
-      await settle();
-    },
+    handle,
+    launcher: () => host.shadowRoot.querySelector(".launcher"),
     async navigate(path, title) {
       window.history.pushState({}, "", path);
       window.document.querySelector("h1").textContent = title;
@@ -160,123 +163,49 @@ async function makeReader(path = "/abs/1706.03762v7", layout = "docked") {
   };
 }
 
-test("Codex replaces only the native Assistant body and restores the original draft", async () => {
-  const app = await makeReader();
-  try {
-    const doc = app.window.document;
-    const pdf = doc.getElementById("original-pdf"),
-      pdfUrl = pdf.src;
-    const body = doc.querySelector('div[aria-label="Assistant"]');
-    const frame = app.root.querySelector("iframe");
-    assert.equal(frame.hasAttribute("src"), false);
-    await app.select("codex");
-    assert.equal(frame.hidden, false);
-    assert.equal(body.style.visibility, "hidden");
-    assert.equal(frame.style.left, "700px");
-    assert.equal(new URL(frame.src).searchParams.get("tabId"), "10");
-    const chatUrl = frame.src;
-    assert.equal(app.root.querySelector("dialog"), null);
-    assert.equal(doc.getElementById("original-pdf"), pdf);
-    assert.equal(pdf.src, pdfUrl);
-    assert.equal(app.window.location.pathname, "/abs/1706.03762v7");
-    await app.select("alphaxiv");
-    assert.equal(frame.hidden, true);
-    assert.equal(body.style.visibility, "");
-    assert.equal(body.getAttribute("aria-hidden"), null);
-    assert.equal(body.querySelector("textarea").value, "Original draft");
-    await app.select("codex");
-    assert.equal(frame.src, chatUrl);
-    assert.equal(pdf.src, pdfUrl);
-  } finally {
-    app.dom.window.close();
+test("paper pages get only a floating icon; the site's own assistant is untouched", async () => {
+  for (const layout of ["docked", "floating"]) {
+    const app = await makeReader("/abs/1706.03762v7", layout);
+    try {
+      const document = app.window.document;
+      assert.equal(app.launcher().hidden, false);
+      assert.equal(app.root.querySelector("iframe"), null);
+      assert.equal(document.querySelector('[data-paper-sidecar="provider"]'), null);
+      const body = document.querySelector('div[aria-label="Assistant"]');
+      assert.equal(body.style.visibility, "");
+      assert.equal(body.hasAttribute("aria-hidden"), false);
+      assert.equal(body.hasAttribute("inert"), false);
+      assert.equal(document.querySelector("textarea").value, "Original draft");
+      assert.equal(
+        document.getElementById("original-pdf").src,
+        "https://pdfs.assets.alphaxiv.org/1706.03762v7.pdf",
+      );
+    } finally {
+      app.dom.window.close();
+    }
   }
 });
 
-test("native collapse and reopen keep the Codex frame; only that frame can request collapse", async () => {
-  const app = await makeReader();
-  try {
-    await app.select("codex");
-    const frame = app.root.querySelector("iframe"),
-      chatUrl = frame.src;
-    app.window.dispatchEvent(
-      new app.window.MessageEvent("message", {
-        source: frame.contentWindow,
-        origin: "https://www.alphaxiv.org",
-        data: { type: "paper-sidecar-collapse" },
-      }),
-    );
-    await app.settle();
-    assert.equal(app.panel.hidden, false);
-    app.window.dispatchEvent(
-      new app.window.MessageEvent("message", {
-        source: frame.contentWindow,
-        origin: extensionOrigin,
-        data: { type: "paper-sidecar-collapse" },
-      }),
-    );
-    await app.settle();
-    assert.equal(app.panel.hidden, true);
-    assert.equal(frame.hidden, true);
-    assert.equal(frame.src, chatUrl);
-    app.window.document.querySelector('[aria-label="Ask the assistant"]').click();
-    await app.settle();
-    assert.equal(frame.hidden, false);
-    assert.equal(frame.src, chatUrl);
-  } finally {
-    app.dom.window.close();
+test("the icon opens the side panel for its own tab, on alphaXiv and arXiv", async () => {
+  for (const origin of ["https://www.alphaxiv.org", "https://arxiv.org"]) {
+    const app = await makeReader("/abs/1706.03762v7", "docked", origin);
+    try {
+      app.launcher().click();
+      await app.settle();
+      assert.equal(JSON.stringify(app.handle.opened), JSON.stringify([{ tabId: 10 }]));
+    } finally {
+      app.dom.window.close();
+    }
   }
 });
 
-test("the live floating Assistant exposes Codex and remains hidden while its parent is collapsed", async () => {
-  const app = await makeReader("/abs/1706.03762v7", "floating");
-  try {
-    const doc = app.window.document;
-    const frame = app.root.querySelector("iframe");
-    const editor = doc.querySelector("textarea");
-    editor.remove();
-    await app.settle();
-    assert.equal(doc.querySelector('[aria-label="Paper workspace"]'), null);
-    assert.equal(frame.hidden, true);
-    doc.querySelector('[aria-label="Ask the assistant"]').click();
-    await app.settle();
-    assert.ok(app.provider(), "the floating Assistant needs the provider switch too");
-    doc.querySelector('[role="region"][aria-label="Assistant"]').append(editor);
-    await app.settle();
-    await app.select("codex");
-    assert.equal(frame.hidden, false);
-    assert.equal(app.host.style.zIndex, "50");
-    const chatUrl = frame.src;
-    doc.querySelector('[aria-label="Close assistant"]').click();
-    await app.settle();
-    assert.equal(frame.hidden, true, "a collapsed popout still has a nonzero inner rectangle");
-    assert.equal(frame.src, chatUrl);
-    doc.querySelector('[aria-label="Ask the assistant"]').click();
-    await app.settle();
-    assert.equal(frame.hidden, false);
-    assert.equal(frame.src, chatUrl);
-    await app.select("alphaxiv");
-    assert.equal(doc.querySelector("textarea").value, "Original draft");
-  } finally {
-    app.dom.window.close();
-  }
-});
-
-test("paper navigation follows the source tab and unsupported pages restore the site", async () => {
+test("the icon follows in-site navigation and hides away from paper pages", async () => {
   const app = await makeReader();
   try {
-    await app.select("codex");
-    const frame = app.root.querySelector("iframe"),
-      chatUrl = frame.src;
     await app.navigate("/pdf/2401.12345v2", "Paper B");
-    assert.equal(frame.hidden, false);
-    assert.equal(frame.src, chatUrl);
+    assert.equal(app.launcher().hidden, false);
     await app.navigate("/explore", "Explore");
-    assert.equal(frame.hasAttribute("src"), false);
-    assert.equal(app.provider(), undefined);
-    assert.equal(
-      app.window.document.querySelector('div[aria-label="Assistant"]').style.visibility,
-      "",
-    );
+    assert.equal(app.launcher().hidden, true);
   } finally {
     app.dom.window.close();
   }
@@ -303,7 +232,7 @@ test("only the extension chat page can save conversations through the background
   assert.equal(response, undefined);
   handle(
     request,
-    { id: extensionId, url: `${extensionOrigin}/sidepanel.html?embedded=1&tabId=10` },
+    { id: extensionId, url: `${extensionOrigin}/sidepanel.html?tabId=10` },
     (value) => {
       response = value;
     },

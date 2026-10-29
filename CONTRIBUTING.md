@@ -9,8 +9,7 @@
 | `extension/manifest.json` | 扩展入口、权限和资源暴露规则的唯一来源 |
 | `extension/paper-context.js` | 论文编号、版本匹配和 PDF 地址选择 |
 | `extension/content.js` | 当前网页信息、选区、站内导航跟踪 |
-| `extension/alphaxiv-workspace.js` | 识别 alphaXiv 原有 Assistant，放置提供方切换按钮，保留并恢复原助手状态 |
-| `extension/reader-view.js` | Sidecar iframe 的布局、生命周期与来源校验，不管理 PDF 查看器 |
+| `extension/reader-view.js` | 论文页右下角打开侧栏的浮动图标（Shadow DOM 隔离），不修改网页 |
 | `extension/reader-options.js` | 根据模型目录（Codex 与其他 API）生成分组选项、保存选择 |
 | `extension/settings-view.js` | 设置页：ChatGPT 账号登录、系统提示词编辑、其他模型 API 管理 |
 | `extension/sidepanel.html`、`style.css` | 聊天界面的结构与样式 |
@@ -26,13 +25,12 @@
 | `host/cache.py` | 固定目录下的磁盘缓存及清理 |
 | `setup.py` | 安装锁定依赖、准备第三方前端文件、生成本机启动器 |
 
-内容脚本按 manifest 中的顺序加载。网页 DOM 适配集中在 `alphaxiv-workspace.js`；它向 `reader-view.js` 提供原助手内容区的位置，后者只管理一个扩展 iframe。`content.js` 负责页面状态。切换按钮由 Shadow DOM 隔离站点样式，聊天样式封装在扩展 iframe 内。页面标题、来源路径和提示词通过 DOM 属性或 textContent 设置，不拼进 HTML。
+内容脚本按 manifest 中的顺序加载：`reader-view.js` 只放置一个浮动图标，`content.js` 负责页面状态。侧栏按标签页打开（`sidepanel.html?tabId=…`），只在 alphaXiv / arXiv 标签页启用。页面标题、来源路径和提示词通过 DOM 属性或 textContent 设置，不拼进 HTML。
 
 ## 维护约定
 
 - 修改权限和入口直接编辑 `manifest.json`。安装脚本读取该文件，不重建或覆盖配置；其中的公开 key 用于保持扩展 ID 稳定。
-- 不移除或重新挂载 alphaXiv 的 PDF、Assistant 或输入框。切换到 Sidecar 时只隐藏原助手内容并保留几何尺寸，切回时恢复原样式、可访问属性和草稿。
-- 收起助手或切回 alphaXiv 只隐藏 Sidecar iframe，不重新赋值地址。离开支持的论文页面才卸载 iframe、关闭原生连接。
+- 不修改 alphaXiv 或 arXiv 的页面内容、助手、PDF 或输入框，只添加浮动图标。不与 alphaXiv 的功能竞争或替换它。
 - 模型选项从 app-server 目录读取；不要将 Fast 倍率硬编码到某个模型。每轮明确传入模型、推理强度和服务档位。
 - 默认系统提示词内置在 `host/reader_settings.py`；用户在设置中保存的提示词优先。每轮重新确定提示词；变更时重建临时线程并恢复近期问答。
 - Codex 使用独立的 `CODEX_HOME`，登录、退出只影响本扩展。不要改回 `~/.codex`。
@@ -65,4 +63,4 @@ uv run python -m unittest discover -s tests -p 'test_*.py' -v
 
 常规检查使用隔离的临时缓存和模拟浏览器 API，不连接模型、不改变登录，也不注册本机连接。真实账号检查是单独的 `uv run python -m tests.smoke`，会消耗少量已有账号额度。
 
-随后在浏览器重新加载扩展并刷新论文页面，手动检查：切换按钮、提问与流式回答、收起再展开、切换论文不串页、设置页登录与 API、深色模式。DOM 测试不能证明 alphaXiv 实际 DOM、页面 CSP、iframe 布局和 Native Messaging 在实际安装下全部可用。
+随后在浏览器重新加载扩展并刷新论文页面，手动检查：浮动图标打开侧栏、PDF 页面的工具栏标记、提问与流式回答、切换标签页和论文不串页、设置页登录与 API、深色模式。

@@ -14,7 +14,7 @@ A browser extension for [alphaXiv](https://www.alphaxiv.org) and [arXiv](https:/
 
 **Features**
 
-- Works inside alphaXiv's Assistant panel; on arXiv, click the **Sidecar** button at the bottom right
+- Opens in the browser side panel from a small icon at the bottom right of alphaXiv and arXiv paper pages
 - Use your ChatGPT account, or APIs like DeepSeek, Kimi, Qwen, OpenRouter, OpenAI, Claude and Ollama
 - Each paper has its own conversation, with history
 - Editable system prompt
@@ -34,7 +34,7 @@ Then in your browser:
 
 1. Open `edge://extensions` or `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and choose the `extension` folder.
-3. Open a paper: on alphaXiv, expand the Assistant and pick **Sidecar**; on arXiv, click the **Sidecar** button at the bottom right.
+3. Open a paper on alphaXiv or arXiv and click the robot icon at the bottom right. In arXiv's PDF view, click the toolbar icon (marked **AI**).
 4. Click **⚙** to sign in to ChatGPT or add an API key.
 
 After updating the code, run `./install.command` again and click **Reload** on the extensions page.
@@ -51,7 +51,7 @@ PDFs come only from arXiv. Everything stays on your Mac: API keys and settings i
 
 ### Troubleshooting
 
-- **No Sidecar button:** make sure it's an arXiv paper page with the Assistant open, then reload the extension and the page.
+- **No icon on the page:** make sure it's a paper page (with an arXiv ID), then reload the extension and the page. In the PDF view, use the toolbar icon.
 - **"本机未连接" (not connected):** run `./install.command` again and reopen the panel.
 - **API error 401 / 404:** check the API key, base URL and model name.
 
@@ -63,7 +63,7 @@ PDFs come only from arXiv. Everything stays on your Mac: API keys and settings i
 
 **功能**
 
-- 嵌入 alphaXiv 的 Assistant 面板；在 arXiv 上点击右下角的 **Sidecar** 按钮
+- 在 alphaXiv 和 arXiv 论文页右下角点击小图标，在浏览器侧栏中打开
 - 支持 ChatGPT 账号，以及 DeepSeek、Kimi、通义千问、OpenRouter、OpenAI、Claude、Ollama 等 API
 - 每篇论文独立对话，可查看历史
 - 系统提示词可自行修改
@@ -83,7 +83,7 @@ cd paper-sidecar
 
 1. 打开 `edge://extensions` 或 `chrome://extensions`，开启**开发人员模式**。
 2. 点击**加载解压缩的扩展**，选择 `extension` 文件夹。
-3. 打开一篇论文：alphaXiv 上展开 Assistant 并选择 **Sidecar**；arXiv 上点击右下角的 **Sidecar** 按钮。
+3. 在 alphaXiv 或 arXiv 打开一篇论文，点击右下角的机器人图标。在 arXiv 的 PDF 页面，点击工具栏图标（带 **AI** 标记）。
 4. 点击 **⚙**，登录 ChatGPT 或添加 API Key。
 
 更新代码后，重新运行 `./install.command`，并在扩展页点击**重新加载**。
@@ -100,7 +100,7 @@ PDF 只从 arXiv 下载。数据都在你的 Mac 上：API Key 和设置在 `~/L
 
 ### 常见问题
 
-- **没有 Sidecar 按钮：** 确认是 arXiv 论文页面且已展开 Assistant，然后重新加载扩展并刷新页面。
+- **页面上没有图标：** 确认是带 arXiv 编号的论文页面，然后重新加载扩展并刷新页面。PDF 页面请使用工具栏图标。
 - **提示“本机未连接”：** 重新运行 `./install.command`，再重新打开侧栏。
 - **API 报错 401 / 404：** 检查 API Key、Base URL 和模型名称。
 
@@ -119,13 +119,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the code layout. 代码结构见 CONT
 
 Paper Sidecar is an independent, non-commercial open-source project. It is not affiliated with, endorsed by or sponsored by arXiv or alphaXiv; their names are trademarks of their respective owners and are used only to describe compatibility.
 
-- It only changes how pages look in **your own browser**. It does not call alphaXiv's AI or any alphaXiv API.
+- It only adds a small button to paper pages in **your own browser**. It does not change alphaXiv's or arXiv's pages, and does not call alphaXiv's AI or servers.
 - PDFs are downloaded **only from arXiv**, one at a time with at least 3 seconds between requests, and cached on your Mac for your personal reading. Nothing is redistributed.
 - You are responsible for following the terms of the sites you use, the license of each paper, and the terms of the model provider you choose.
 
 Paper Sidecar 是独立的非商业开源项目，与 arXiv、alphaXiv 没有任何关联，也未获得其认可或赞助；相关名称归各自所有者，仅用于说明兼容性。
 
-- 它只改变**你自己浏览器**中的页面显示，不调用 alphaXiv 的 AI 或任何 alphaXiv 接口。
+- 它只在**你自己浏览器**的论文页上加一个小按钮，不修改 alphaXiv 或 arXiv 的页面，也不调用 alphaXiv 的 AI 或服务器。
 - PDF **只从 arXiv 下载**，每次一个、间隔至少 3 秒，仅缓存在你的 Mac 上供个人阅读，不会再分发。
 - 请自行遵守所用网站的条款、每篇论文的许可，以及你所选模型服务商的条款。
 

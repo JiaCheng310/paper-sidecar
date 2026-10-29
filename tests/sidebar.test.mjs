@@ -18,9 +18,10 @@ function browserEvent() {
   };
 }
 
-async function makeSidebar({ embedded = false } = {}) {
+async function makeSidebar({ bound = false } = {}) {
   const html = await readFile(new URL("../extension/sidepanel.html", import.meta.url), "utf8");
-  const suffix = embedded ? "?embedded=1&tabId=10&parent=https%3A%2F%2Fwww.alphaxiv.org" : "";
+  // The real side panel is opened per tab as sidepanel.html?tabId=<id> (see background.js).
+  const suffix = bound ? "?tabId=10" : "";
   const dom = new JSDOM(html, {
     runScripts: "outside-only",
     url: `https://test.invalid/sidepanel.html${suffix}`,
@@ -28,7 +29,6 @@ async function makeSidebar({ embedded = false } = {}) {
   const { window } = dom;
   const sent = [],
     saved = [],
-    parentMessages = [],
     created = [];
   const messages = browserEvent(),
     activated = browserEvent(),
@@ -50,8 +50,6 @@ async function makeSidebar({ embedded = false } = {}) {
   window.DOMPurify = createDOMPurify(window);
   window.renderMathInElement = () => {};
   window.setInterval = () => 0;
-  window.parent.postMessage = (message, origin) =>
-    parentMessages.push({ message: structuredClone(message), origin });
   window.chrome = {
     storage: { local: storage },
     runtime: {
@@ -118,7 +116,6 @@ async function makeSidebar({ embedded = false } = {}) {
     saved,
     messages,
     settings,
-    parentMessages,
     created,
     async activateOther() {
       otherActive = {
@@ -244,8 +241,8 @@ test("cache cleanup updates usage without deleting the visible or saved conversa
   }
 });
 
-test("embedded chat stays bound to its paper tab and can ask the reader to collapse", async () => {
-  const app = await makeSidebar({ embedded: true });
+test("a tab's side panel stays bound to that tab's paper", async () => {
+  const app = await makeSidebar({ bound: true });
   try {
     const doc = app.window.document;
     await app.activateOther();
@@ -256,19 +253,13 @@ test("embedded chat stays bound to its paper tab and can ask the reader to colla
       .dispatchEvent(new app.window.Event("submit", { cancelable: true }));
     await tick();
     assert.equal(app.sent.find((message) => message.type === "chat").context.paperId, "1706.03762");
-    assert.equal(doc.getElementById("collapse-panel").hidden, false);
-    doc.getElementById("collapse-panel").click();
-    assert.deepEqual(app.parentMessages.at(-1), {
-      message: { type: "paper-sidecar-collapse" },
-      origin: "https://www.alphaxiv.org",
-    });
   } finally {
     app.dom.window.close();
   }
 });
 
 test("model controls use real catalog tiers, persist choices and send them with the question", async () => {
-  const app = await makeSidebar({ embedded: true });
+  const app = await makeSidebar({ bound: true });
   try {
     const doc = app.window.document;
     const model = doc.getElementById("model-choice"),
@@ -321,7 +312,7 @@ test("model controls use real catalog tiers, persist choices and send them with 
 });
 
 test("settings refresh adds new model choices without changing a saved selection", async () => {
-  const app = await makeSidebar({ embedded: true });
+  const app = await makeSidebar({ bound: true });
   try {
     const doc = app.window.document;
     const model = doc.getElementById("model-choice");
@@ -587,6 +578,37 @@ test("papers answer independently, share history across versions and restore arc
     assert.match(doc.getElementById("messages").textContent, /A done/);
     assert.equal(doc.getElementById("history-menu").hidden, true);
     assert.equal(app.saved.at(-1).library["1706.03762"].archives.length, 0);
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+test("in the browser PDF viewer the real title is loaded from the PDF right away", async () => {
+  const app = await makeSidebar();
+  try {
+    const doc = app.window.document;
+    await app.navigate("2401.12345", "2401.12345");
+    const load = app.sent.filter((message) => message.type === "load").at(-1);
+    assert.equal(load.context.paperId, "2401.12345");
+    app.messages.emit({
+      event: "paper",
+      requestId: load.requestId,
+      paperId: "2401.12345",
+      title: "Distributionally Robust Receive Combining",
+      pageCount: 12,
+      hasTextLayer: true,
+      pdfUrl: "https://arxiv.org/pdf/2401.12345",
+    });
+    assert.equal(
+      doc.getElementById("paper-title").textContent,
+      "Distributionally Robust Receive Combining",
+    );
+    await app.navigate("2401.12345", "2401.12345");
+    assert.equal(app.sent.filter((message) => message.type === "load").length, 1);
+    assert.equal(
+      doc.getElementById("paper-title").textContent,
+      "Distributionally Robust Receive Combining",
+    );
   } finally {
     app.dom.window.close();
   }

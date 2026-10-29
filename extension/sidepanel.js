@@ -5,20 +5,7 @@ import { createSettingsView } from "./settings-view.js";
 const $ = (id) => document.getElementById(id);
 const HOST = "org.local.paper_sidecar";
 const panelParams = new URLSearchParams(location.search);
-const embedded = panelParams.get("embedded") === "1";
 const sourceTabId = Number(panelParams.get("tabId"));
-const parentOrigin = panelParams.get("parent");
-const validReader =
-  !embedded ||
-  (panelParams.has("tabId") &&
-    Number.isSafeInteger(sourceTabId) &&
-    sourceTabId >= 0 &&
-    [
-      "https://www.alphaxiv.org",
-      "https://alphaxiv.org",
-      "https://arxiv.org",
-      "https://www.arxiv.org",
-    ].includes(parentOrigin));
 const library = (await chrome.storage.local.get("library")).library || {};
 let context = null,
   port = null,
@@ -36,7 +23,6 @@ const pending = new Map();
 const options = await createReaderOptions(document, chrome.storage.local, (text) =>
   notice(text, true),
 );
-if (embedded) document.documentElement.dataset.embedded = "true";
 
 function notice(text = "", error = false) {
   // The settings sheet covers the chat, so it mirrors notices while it is open.
@@ -92,6 +78,23 @@ function entry(key) {
     library[key].archives = library[key].archives.filter((messages) => messages?.length);
   }
   return library[key];
+}
+
+// In the browser's PDF viewer the tab title is only the arXiv number.
+const looksLikeId = (title) => /^\[?[\w./-]*\d{4}\.?\d*(v\d+)?\]?$/.test(title || "");
+let titleRequested = null;
+const pdfTitles = new Map();
+
+// Fetch the PDF once to show its real title; it is the PDF the user is already viewing.
+function loadTitle() {
+  if (!connected || !context || !looksLikeId(context.title) || titleRequested === context.paperId)
+    return;
+  titleRequested = context.paperId;
+  try {
+    send("load", { context });
+  } catch {
+    titleRequested = null;
+  }
 }
 
 const currentTurn = () => (context ? turns.get(context.key) : undefined);
@@ -333,11 +336,12 @@ async function refreshContext() {
     return true;
   }
   const pdfUrl = pdfUrlForPaper(paperId, data.pdfLinks || []);
+  const pageTitle = data.title || paperId;
   context = {
     paperId,
     key: conversationKey(paperId),
     url: data.url,
-    title: data.title || paperId,
+    title: looksLikeId(pageTitle) ? pdfTitles.get(paperId) || pageTitle : pageTitle,
     pdfUrl,
   };
   $("paper-title").textContent = context.title;
@@ -350,16 +354,16 @@ async function refreshContext() {
     $("paper-status").textContent = connected ? "已识别 · 提问时读取 PDF" : "等待本机连接";
     notice();
     renderMessages();
+    loadTitle();
   }
   updateControls();
   return true;
 }
 
 // The side panel opened for one tab stays bound to it (see background.js).
-const boundTab = !embedded && panelParams.has("tabId") && Number.isSafeInteger(sourceTabId);
+const boundTab = panelParams.has("tabId") && Number.isSafeInteger(sourceTabId) && sourceTabId >= 0;
 
 async function contextTab() {
-  if (embedded) return validReader ? chrome.tabs.get(sourceTabId) : null;
   if (boundTab) return chrome.tabs.get(sourceTabId);
   return (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
 }
@@ -394,6 +398,7 @@ function connect() {
       updateControls();
       if (context) $("paper-status").textContent = "已识别 · 提问时读取 PDF";
       send("settings");
+      loadTitle();
     } else if (message.event === "settings") {
       pending.delete(message.requestId);
       options.initialize(message);
@@ -405,7 +410,9 @@ function connect() {
     } else if (message.event === "paper") {
       if (message.paperId === context?.paperId) {
         // In the browser's PDF viewer the page only knows the arXiv number.
-        if (message.title && /^\[?[\w./-]*\d{4}\.?\d*(v\d+)?\]?$/.test(context.title)) {
+        if (message.title && !looksLikeId(message.title))
+          pdfTitles.set(message.paperId, message.title);
+        if (message.title && looksLikeId(context.title) && !looksLikeId(message.title)) {
           context.title = message.title;
           $("paper-title").textContent = message.title;
         }
@@ -690,7 +697,7 @@ document.querySelectorAll("[data-prompt]").forEach((button) =>
   }),
 );
 chrome.tabs.onActivated.addListener(() => {
-  if (!embedded && !boundTab) void refreshContext();
+  if (!boundTab) void refreshContext();
 });
 chrome.tabs.onUpdated.addListener((id, change) => {
   if (id === lastTabId && (change.url || change.status === "complete")) void refreshContext();
@@ -699,30 +706,11 @@ chrome.tabs.onUpdated.addListener((id, change) => {
 setInterval(() => {
   if (!document.hidden) void refreshContext();
 }, 1600);
-if (embedded && validReader) {
-  $("collapse-panel").hidden = false;
-  $("collapse-panel").addEventListener("click", () => {
-    window.parent.postMessage({ type: "paper-sidecar-collapse" }, parentOrigin);
-  });
-  window.addEventListener("message", (event) => {
-    if (
-      event.source === window.parent &&
-      event.origin === parentOrigin &&
-      event.data?.type === "paper-sidecar-context-changed"
-    )
-      void refreshContext();
-  });
-}
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void refreshContext();
 });
 window.addEventListener("pagehide", () => {
   for (const turn of turns.values()) void persist(turn.key);
 });
-if (validReader) {
-  connect();
-  await refreshContext();
-} else {
-  notice("阅读区连接信息不完整，请回到论文页面重新打开。", true);
-  updateControls();
-}
+connect();
+await refreshContext();

@@ -71,10 +71,6 @@ a:hover {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* The native alphaXiv header and paper title remain outside this frame. */
-[data-embedded="true"] .standalone-only {
-  display: none;
-}
 
 /* Paper ------------------------------------------------------------------ */
 .paper-card {
