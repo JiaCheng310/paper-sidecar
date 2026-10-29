@@ -14,7 +14,7 @@ A browser extension for [alphaXiv](https://www.alphaxiv.org) and [arXiv](https:/
 
 **Features**
 
-- A small icon at the bottom right of alphaXiv and arXiv paper pages opens a wide panel on the right; drag its edge to resize
+- A small icon at the bottom right of alphaXiv and arXiv paper pages opens a panel docked on the right that narrows the page instead of covering it; drag its edge to resize
 - Use your ChatGPT account, or APIs like DeepSeek, Kimi, Qwen, OpenRouter, OpenAI, Claude and Ollama
 - Each paper has its own conversation, with history
 - A thorough default reading workflow based on [PaperForge](https://github.com/FeijiangHan/PaperForge), editable in settings
@@ -65,7 +65,7 @@ PDFs come only from arXiv. Everything stays on your Mac: API keys and settings i
 
 **功能**
 
-- 在 alphaXiv 和 arXiv 论文页右下角点击小图标，在页面右侧打开宽面板，拖动边缘可调整宽度
+- 在 alphaXiv 和 arXiv 论文页右下角点击小图标，在页面右侧打开面板，页面会相应变窄而不是被遮住，拖动边缘可调整宽度
 - 支持 ChatGPT 账号，以及 DeepSeek、Kimi、通义千问、OpenRouter、OpenAI、Claude、Ollama 等 API
 - 每篇论文独立对话，可查看历史
 - 默认采用 [PaperForge](https://github.com/FeijiangHan/PaperForge) 的论文精读流程，可在设置中修改

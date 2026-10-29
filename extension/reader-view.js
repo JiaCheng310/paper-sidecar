@@ -1,6 +1,6 @@
-/* A floating icon on alphaXiv/arXiv paper pages that opens Paper Sidecar in a panel on the
-   right edge of the page. The panel is our own extension frame laid over the page; the
-   site's own content, assistant and PDF viewer are never modified. */
+/* A floating icon on alphaXiv/arXiv paper pages that opens Paper Sidecar in a panel docked
+   to the right edge. While it is open the page is narrowed by the panel's width (like a
+   browser side panel), so nothing is covered; the site's own content is never modified. */
 globalThis.PaperSidecarReader = (() => {
   const rootId = "paper-sidecar-root";
 
@@ -38,6 +38,18 @@ globalThis.PaperSidecarReader = (() => {
             right 220ms ease,
             transform 160ms ease,
             box-shadow 160ms ease;
+        }
+        .launcher.settling {
+          opacity: 0;
+          pointer-events: none;
+        }
+        .launcher:not(.settling) {
+          animation: appear 200ms ease;
+        }
+        @keyframes appear {
+          from {
+            opacity: 0;
+          }
         }
         .launcher:hover {
           transform: translateY(-2px);
@@ -148,16 +160,38 @@ globalThis.PaperSidecarReader = (() => {
       open();
     });
 
-    // Width: wide by default (covers the site's right-hand column), user-resizable, remembered.
-    const MIN_WIDTH = 360;
+    // Width: about a third of the window by default, user-resizable, remembered. The page
+    // always keeps at least 360px.
+    const MIN_WIDTH = 340;
     let width = null;
-    const defaultWidth = () => Math.round(Math.min(760, Math.max(420, window.innerWidth * 0.4)));
+    const defaultWidth = () => Math.round(Math.min(600, Math.max(380, window.innerWidth * 0.32)));
     const clampWidth = (value) =>
       Math.round(
-        Math.min(Math.max(value, MIN_WIDTH), Math.max(MIN_WIDTH, window.innerWidth - 120)),
+        Math.min(Math.max(value, MIN_WIDTH), Math.max(MIN_WIDTH, window.innerWidth - 360)),
       );
+
+    // Narrow the page instead of covering it, and restore the page's own style on close.
+    const root = document.documentElement;
+    let savedMargin = null;
+    function pushPage(pixels) {
+      if (pixels) {
+        savedMargin ??= [
+          root.style.getPropertyValue("margin-right"),
+          root.style.getPropertyPriority("margin-right"),
+        ];
+        root.style.setProperty("margin-right", `${pixels}px`, "important");
+      } else if (savedMargin) {
+        const [value, priority] = savedMargin;
+        if (value) root.style.setProperty("margin-right", value, priority);
+        else root.style.removeProperty("margin-right");
+        savedMargin = null;
+      }
+    }
+
     function applyWidth() {
-      panel.style.width = `${clampWidth(width ?? defaultWidth())}px`;
+      const pixels = clampWidth(width ?? defaultWidth());
+      panel.style.width = `${pixels}px`;
+      if (!panel.hidden) pushPage(pixels);
     }
     void chrome.storage.local
       .get("panelWidth")
@@ -198,16 +232,17 @@ globalThis.PaperSidecarReader = (() => {
         frame.src = `${chrome.runtime.getURL("sidepanel.html")}?${params}`;
         panel.append(frame);
       }
-      applyWidth();
       panel.hidden = false;
+      applyWidth();
       launcher.hidden = true;
       frame.focus();
     }
 
     function close() {
       panel.hidden = true;
+      pushPage(0);
       launcher.hidden = !paper;
-      if (paper) place(true);
+      if (paper) place();
     }
 
     // Leaving the paper unloads the frame so its local assistant process is released.
@@ -280,25 +315,38 @@ globalThis.PaperSidecarReader = (() => {
       };
     }
 
-    // Move only after two identical readings, so animations on the page never make it jump.
+    // The icon is placed once the page has settled, then only ever moves up (when the site
+    // adds buttons to its corner stack), after two identical readings. It never chases
+    // buttons that appear and disappear while scrolling.
     let placed = null,
       candidate = null,
-      checkedAt = 0;
-    function place(force = false) {
-      // mount() also runs on every selection change; probing that often is wasted work.
-      if (!force && performance.now() - checkedAt < 500) return;
-      checkedAt = performance.now();
-      const next = target();
-      const same = (a, b) =>
-        a && Math.abs(a.bottom - b.bottom) < 4 && Math.abs(a.right - b.right) < 4;
-      if (same(placed, next)) return (candidate = null);
-      if (!force && placed && !same(candidate, next)) return (candidate = next);
+      checkedAt = 0,
+      settleTimer = 0;
+    function apply(next) {
       placed = next;
       candidate = null;
       launcher.style.bottom = `${next.bottom}px`;
       launcher.style.right = `${next.right}px`;
       error.style.bottom = `${next.bottom + 4}px`;
       error.style.right = `${next.right + 56}px`;
+    }
+    function place(force = false) {
+      // mount() also runs on every selection change; probing that often is wasted work.
+      if (!force && performance.now() - checkedAt < 500) return;
+      checkedAt = performance.now();
+      const next = target();
+      if (force || !placed) return apply(next);
+      if (next.bottom <= placed.bottom + 3) return (candidate = null);
+      if (candidate && Math.abs(candidate.bottom - next.bottom) < 4) apply(next);
+      else candidate = next;
+    }
+    function settle() {
+      launcher.classList.add("settling");
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        place(true);
+        launcher.classList.remove("settling");
+      }, 900);
     }
 
     function mount() {
@@ -307,13 +355,17 @@ globalThis.PaperSidecarReader = (() => {
     }
 
     function setPaper(next) {
+      // Read this first: closing the panel below un-hides the icon.
+      const wasHidden = launcher.hidden;
       const changedTab = paper?.tabId !== next?.tabId;
       paper = next;
       if (!paper || changedTab) unload();
       if (!panel.hidden) return;
-      const wasHidden = launcher.hidden;
       launcher.hidden = !paper;
-      if (paper) place(wasHidden);
+      if (paper && wasHidden) {
+        place(true);
+        settle();
+      }
     }
 
     window.addEventListener("resize", () => {
@@ -327,6 +379,7 @@ globalThis.PaperSidecarReader = (() => {
     }
 
     function destroy() {
+      pushPage(0);
       host.remove();
     }
 

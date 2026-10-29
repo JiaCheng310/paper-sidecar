@@ -201,8 +201,10 @@ test("the icon opens a wide in-page panel bound to its tab, and only that frame 
       assert.equal(url.pathname, "/sidepanel.html");
       assert.equal(url.searchParams.get("tabId"), "10");
       assert.equal(url.searchParams.get("parent"), origin);
-      // Wide by default: at least 420px, about 40% of the window.
-      assert.ok(parseInt(panel.style.width) >= 420);
+      // About a third of the window, and the page is narrowed by the same width.
+      const width = parseInt(panel.style.width);
+      assert.ok(width >= 380 && width <= 600);
+      assert.equal(window.document.documentElement.style.marginRight, `${width}px`);
       // Messages from anything but the panel frame are ignored.
       window.dispatchEvent(
         new window.MessageEvent("message", {
@@ -221,6 +223,7 @@ test("the icon opens a wide in-page panel bound to its tab, and only that frame 
       );
       assert.equal(panel.hidden, true);
       assert.equal(app.launcher().hidden, false);
+      assert.equal(window.document.documentElement.style.marginRight, "");
       // Reopening keeps the same frame (and conversation); leaving the paper unloads it.
       app.launcher().click();
       assert.equal(panel.querySelector("iframe"), frame);
@@ -237,6 +240,10 @@ test("the icon sits above the site's whole button stack, aligned with it", async
   const app = await makeReader();
   try {
     const { window } = app;
+    // The icon appears once the page has settled (about 0.9 s after load).
+    assert.ok(app.launcher().classList.contains("settling"));
+    await new Promise((resolve) => setTimeout(resolve, 950));
+    assert.equal(app.launcher().classList.contains("settling"), false);
     assert.equal(app.launcher().style.bottom, "20px");
     const height = window.innerHeight,
       width = window.innerWidth;
@@ -261,12 +268,21 @@ test("the icon sits above the site's whole button stack, aligned with it", async
     const unrelated = fixedButton(height - 400, 40, width - 70);
     window.document.elementsFromPoint = (x, y) =>
       [assistant, info, unrelated].filter((button) => {
+        if (!button.isConnected) return false;
         const rect = button.getBoundingClientRect();
         return y >= rect.top && y <= rect.bottom && x >= rect.left && x <= rect.right;
       });
     window.dispatchEvent(new window.Event("resize"));
     assert.equal(app.launcher().style.bottom, "152px");
     assert.equal(app.launcher().style.right, `${Math.round(width - (width - 50) - 23)}px`);
+    // A button that disappears while scrolling must not pull the icon down again.
+    info.remove();
+    const wait = () => new Promise((resolve) => setTimeout(resolve, 520));
+    for (let check = 0; check < 2; check++) {
+      await wait();
+      window.document.dispatchEvent(new window.Event("selectionchange"));
+    }
+    assert.equal(app.launcher().style.bottom, "152px");
   } finally {
     app.dom.window.close();
   }
