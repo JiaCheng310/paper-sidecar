@@ -49,7 +49,7 @@ After updating the code, run `./install.command` again and click **Reload** on t
 
 ### Privacy
 
-PDFs come only from arXiv. Everything stays on your Mac: API keys and settings in `~/Library/Application Support/paper-sidecar/`, PDF cache in `~/Library/Caches/paper-sidecar/` (max 512 MB). Your questions are sent to the model provider you choose.
+PDFs come only from arXiv. Everything stays on your Mac: API keys and settings in `~/Library/Application Support/paper-sidecar/`, PDF cache in `~/Library/Caches/paper-sidecar/` (max 512 MB). Old PDFs and the least recently used conversations are cleaned up automatically; an idle panel frees its memory after 10 minutes. Your questions are sent to the model provider you choose.
 
 ### Troubleshooting
 
@@ -100,7 +100,7 @@ cd paper-sidecar
 
 ### 隐私
 
-PDF 只从 arXiv 下载。数据都在你的 Mac 上：API Key 和设置在 `~/Library/Application Support/paper-sidecar/`，PDF 缓存在 `~/Library/Caches/paper-sidecar/`（最多 512 MB）。你的提问会发送给你选择的模型服务商。
+PDF 只从 arXiv 下载。数据都在你的 Mac 上：API Key 和设置在 `~/Library/Application Support/paper-sidecar/`，PDF 缓存在 `~/Library/Caches/paper-sidecar/`（最多 512 MB）。旧的 PDF 和最久没用的对话会自动清理；面板闲置 10 分钟后会释放内存。你的提问会发送给你选择的模型服务商。
 
 ### 常见问题
 

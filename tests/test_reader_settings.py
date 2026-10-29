@@ -267,3 +267,43 @@ class PaperContextTest(unittest.TestCase):
             def full_text(self, max_chars):
                 return "[PDF page 1]\n...", {"start_page": 40, "offset": 120}
         self.assertIn('continue with read_paper_pages from {"start_page": 40, "offset": 120}', paper_context(Long()))
+
+
+class IdleReleaseTest(unittest.IsolatedAsyncioTestCase):
+    async def test_quiet_panels_release_codex_and_pdfs_but_never_mid_answer(self):
+        events = []
+        bridge = Bridge(events.append, settings=ReaderSettings(UserStore(None)))
+
+        class Process:
+            returncode = None
+
+        class Client:
+            closed = 0
+            process = Process()
+
+            async def close(self):
+                Client.closed += 1
+                self.process.returncode = 0
+
+        class LoadedPaper:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        client = Client()
+        bridge.client = client
+        paper = LoadedPaper()
+        bridge.papers.papers["1706.03762"] = paper
+        bridge.threads = {"1706.03762": "thread-1"}
+        bridge.thread_papers = {"thread-1": "1706.03762"}
+
+        self.assertFalse(await bridge.release_if_idle(idle=600))  # Recently active.
+        bridge.turns = {"1706.03762": {}}
+        self.assertFalse(await bridge.release_if_idle(idle=0))  # An answer is running.
+        bridge.turns = {}
+        self.assertTrue(await bridge.release_if_idle(idle=0))
+        self.assertEqual(Client.closed, 1)
+        self.assertTrue(paper.closed)
+        self.assertEqual((bridge.threads, bridge.thread_papers, bridge.papers.papers), ({}, {}, {}))
+        self.assertFalse(await bridge.release_if_idle(idle=0))  # Nothing left to free.

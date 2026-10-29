@@ -7,6 +7,7 @@ import re
 import signal
 import struct
 import sys
+import time
 
 from host.codex_client import CodexClient, READER_INSTRUCTIONS, paper_tools
 from host.cache import DiskPaperCache
@@ -17,6 +18,9 @@ from host.user_settings import UserStore, migrate_legacy_dirs
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_MESSAGE = 1024 * 1024
+# After this long without any request, the Codex process and in-memory PDFs are released;
+# both come back on demand (PDFs from the disk cache, context from the visible history).
+IDLE_RELEASE_SECONDS = 600
 
 
 def conversation_key(paper_id):
@@ -74,6 +78,7 @@ class Bridge:
         self.settings = settings if settings is not None else ReaderSettings(store=UserStore())
         # One answer per paper at a time; different papers answer concurrently.
         self.turns = {}
+        self.last_activity = time.monotonic()
         self.fetch_slots = asyncio.Semaphore(2)
         self.client = CodexClient(ROOT, self.on_codex_event, self.on_tool)
 
@@ -275,6 +280,7 @@ class Bridge:
                 done.cancel()
             if self.turns.get(slot) is turn:
                 del self.turns[slot]
+            self.last_activity = time.monotonic()
 
     async def chat_direct(self, message, turn, paper, settings, prompt, question):
         key, provider, request_id = turn["paperId"], settings["provider"], message["requestId"]
@@ -362,6 +368,7 @@ class Bridge:
 
     async def handle(self, message):
         request_id = message.get("requestId")
+        self.last_activity = time.monotonic()
         try:
             if message.get("type") == "hello":
                 self.send({"event": "ready", "requestId": request_id, "version": "0.1.0",
@@ -423,6 +430,21 @@ class Bridge:
         except Exception as error:
             self.send({"event": "error", "requestId": request_id, "text": str(error)[:1000]})
 
+    async def release_if_idle(self, idle=IDLE_RELEASE_SECONDS):
+        """Free memory after a quiet spell; nothing is lost, everything restarts on demand."""
+        running = self.client.process and self.client.process.returncode is None
+        if (self.turns or self.loading or (not running and not self.papers.papers)
+                or time.monotonic() - self.last_activity < idle):
+            return False
+        await self.client.close()
+        # Model threads lived in that process; the next question starts a new thread with
+        # the recent visible history, exactly as after reopening the panel.
+        self.threads.clear()
+        self.thread_papers.clear()
+        self.thread_prompts.clear()
+        self.papers.close()
+        return True
+
     async def close(self):
         await self.client.close()
         self.papers.close()
@@ -438,6 +460,13 @@ async def main():
     protocol = asyncio.StreamReaderProtocol(reader)
     await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin.buffer)
     bridge, tasks = Bridge(), set()
+
+    async def watch_idle():
+        while True:
+            await asyncio.sleep(60)
+            await bridge.release_if_idle()
+
+    idle_watch = asyncio.create_task(watch_idle())
     try:
         while True:
             header = await reader.readexactly(4)
@@ -453,6 +482,7 @@ async def main():
     except (asyncio.IncompleteReadError, asyncio.CancelledError):
         pass
     finally:
+        idle_watch.cancel()
         for task in tasks:
             task.cancel()
         await bridge.close()
